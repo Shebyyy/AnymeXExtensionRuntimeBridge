@@ -8,6 +8,8 @@ import com.fasterxml.jackson.module.kotlin.kotlinModule
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.readValue
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import android.content.Context
 
 object APIHolder {
@@ -36,6 +38,78 @@ object APIHolder {
 
     fun capitalize(str: String): String {
         return str.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
+    }
+
+    private var trackerCache: HashMap<String, AniSearch> = hashMapOf()
+
+    suspend fun getTracker(
+        titles: List<String>,
+        types: Set<TrackerType>?,
+        year: Int?,
+    ): Tracker? = getTracker(titles, types, year, false)
+
+
+    suspend fun getTracker(
+        titles: List<String>,
+        types: Set<TrackerType>?,
+        year: Int?,
+        lessAccurate: Boolean
+    ): Tracker? {
+        return try {
+            require(titles.isNotEmpty()) { "titles must not be empty when calling getTracker" }
+
+            val mainTitle = titles[0]
+            val query = """
+                query (${'$'}page: Int = 1 ${'$'}search: String ${'$'}sort: [MediaSort] = [POPULARITY_DESC, SCORE_DESC] ${'$'}type: MediaType) {
+                  Page(page: ${'$'}page, perPage: 20) {
+                    media(search: ${'$'}search sort: ${'$'}sort type: ${'$'}type) {
+                      id
+                      idMal
+                      title { romaji english }
+                      coverImage { extraLarge large }
+                      bannerImage
+                      seasonYear
+                      format
+                    }
+                  }
+                }
+            """.trimIndent().trim()
+
+            val search = trackerCache[mainTitle] ?: run {
+                val body = mapOf(
+                    "query" to query,
+                    "variables" to mapOf(
+                        "search" to mainTitle,
+                        "sort" to "SEARCH_MATCH",
+                        "type" to "ANIME",
+                    )
+                ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+                app.post("https://graphql.anilist.co", requestBody = body)
+                    .parsedSafe<AniSearch>()
+                    ?.also { trackerCache[mainTitle] = it }
+            } ?: return null
+
+            val res = search.data?.page?.media?.find { media ->
+                val matchingYears = year == null || media.seasonYear == year
+                val matchingTitles = media.title?.let { title ->
+                    titles.any { userTitle -> title.isMatchingTitles(userTitle) }
+                } ?: false
+                val matchingTypes = types?.any { it.name.equals(media.format, true) } == true
+                if (lessAccurate) matchingTitles || matchingTypes && matchingYears
+                else matchingTitles && matchingTypes && matchingYears
+            } ?: return null
+
+            Tracker(
+                res.idMal,
+                null,
+                res.id?.toString(),
+                res.coverImage?.extraLarge ?: res.coverImage?.large,
+                res.bannerImage
+            )
+        } catch (t: Throwable) {
+            logError(t)
+            null
+        }
     }
 }
 

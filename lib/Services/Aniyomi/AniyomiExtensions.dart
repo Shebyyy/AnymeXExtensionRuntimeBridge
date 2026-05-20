@@ -121,7 +121,7 @@ class AniyomiExtensions extends Extension {
     final installed = getInstalledRx(type).value;
     final installedIds = installed.map((e) => e.id).toSet();
 
-    _detectUpdates(all.cast<ASource>(), type);
+    _detectUpdates(all.whereType<ASource>().toList(), type);
 
     getRawAvailableRx(type).value = List.unmodifiable(all);
 
@@ -216,7 +216,7 @@ class AniyomiExtensions extends Extension {
   }
 
   void _detectUpdates(List<ASource> available, ItemType type) {
-    final installed = getInstalledRx(type).value as List<ASource>;
+    final installed = getInstalledRx(type).value.whereType<ASource>().toList();
     final repoMap = {for (var s in available) s.id: s};
 
     bool changed = false;
