@@ -32,6 +32,8 @@ class MSource extends Source {
   factory MSource.fromJson(Map<String, dynamic> json) {
     final base = Source.fromJson(json);
 
+    final isLnReader = json['site'] != null && json['url'] != null && json['sourceCodeLanguage'] == null;
+
     return MSource(
       id: base.id,
       name: base.name,
@@ -45,10 +47,11 @@ class MSource extends Source {
       repo: base.repo,
       hasUpdate: base.hasUpdate,
       sourceCode: json['sourceCode'],
-      sourceCodeUrl: json['sourceCodeUrl'],
+      sourceCodeUrl: json['sourceCodeUrl'] ?? json['url'],
       headers: json['headers'],
-      sourceCodeLanguage:
-          SourceCodeLanguage.values[json['sourceCodeLanguage'] ?? 0],
+      sourceCodeLanguage: isLnReader
+          ? SourceCodeLanguage.lnreader
+          : SourceCodeLanguage.values[json['sourceCodeLanguage'] ?? 0],
     );
   }
 
@@ -62,11 +65,11 @@ class MSource extends Source {
     return json;
   }
 
-  //bool get isTorrent => (typeSource?.toLowerCase() ?? "") == "torrent";
+  // bool get isTorrent => (typeSource?.toLowerCase() ?? "") == "torrent";
 
   m.MSource toMSource() {
     return m.MSource(
-      id: id!.toInt(),
+      id: id?.toNullInt() ?? 0,
       name: name,
       hasCloudflare: false,
       isFullData: true,

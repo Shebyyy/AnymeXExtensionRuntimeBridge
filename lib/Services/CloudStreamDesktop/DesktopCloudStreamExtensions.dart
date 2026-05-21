@@ -38,6 +38,9 @@ class DesktopCloudStreamExtensions extends DesktopExtensionBase {
   @override
   bool get supportsManga => false;
 
+  @override
+  bool get requiresPlugin => true;
+
   final Rx<List<Source>> installedAnimeExtensions = Rx([]);
   final Rx<List<Source>> availableAnimeExtensions = Rx([]);
 

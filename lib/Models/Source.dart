@@ -28,10 +28,9 @@ class Source {
   });
 
   Source.fromJson(Map<String, dynamic> json) {
-    baseUrl = json['baseUrl'];
+    baseUrl = json['baseUrl'] ?? json['site'];
     iconUrl = json['iconUrl'];
     id = json['id'].toString();
-    itemType = ItemType.values[json['itemType'] ?? 0];
     isNsfw = json['isNsfw'];
     lang = json['lang'];
     name = json['name'];
@@ -40,6 +39,13 @@ class Source {
     repo = json['repo'];
     managerId = json['managerId'];
     hasUpdate = json['hasUpdate'] ?? false;
+
+    final isLnReader = json['site'] != null && json['url'] != null && json['sourceCodeLanguage'] == null;
+    if (isLnReader) {
+      itemType = ItemType.novel;
+    } else {
+      itemType = ItemType.values[json['itemType'] ?? 0];
+    }
   }
 
   Map<String, dynamic> toJson() => {

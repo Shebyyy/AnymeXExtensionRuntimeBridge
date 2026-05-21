@@ -40,7 +40,10 @@ class SoraExtensions extends Extension {
   }
 
   @override
-  Future<void> fetchNovelExtensions() async {}
+  Future<void> fetchNovelExtensions() async {
+    final res = await _fetchExtensions(ItemType.novel);
+    getAvailableRx(ItemType.novel).value = res;
+  }
 
   @override
   Future<void> fetchInstalledAnimeExtensions() async {
@@ -55,7 +58,10 @@ class SoraExtensions extends Extension {
   }
 
   @override
-  Future<void> fetchInstalledNovelExtensions() async {}
+  Future<void> fetchInstalledNovelExtensions() async {
+    final installed = _loadInstalled(ItemType.novel);
+    getInstalledRx(ItemType.novel).value = installed;
+  }
 
   @override
   Future<void> addRepo(String repoUrl, ItemType type) async {

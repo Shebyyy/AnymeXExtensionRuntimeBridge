@@ -64,6 +64,8 @@ class CloudStreamExtensions extends Extension {
   bool get supportsNovel => false;
   @override
   bool get supportsManga => false;
+  @override
+  bool get requiresPlugin => true;
 
   @override
   Future<void> initialize() async {

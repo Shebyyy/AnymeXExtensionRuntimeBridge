@@ -36,6 +36,9 @@ class DesktopAniyomiExtensions extends DesktopExtensionBase {
   bool get supportsNovel => false;
 
   @override
+  bool get requiresPlugin => true;
+
+  @override
   SourceMethods createSourceMethods(Source source) =>
       DesktopAniyomiSourceMethods(source);
 

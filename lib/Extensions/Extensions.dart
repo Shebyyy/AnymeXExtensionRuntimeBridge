@@ -14,6 +14,8 @@ abstract class Extension {
   bool get supportsManga => true;
   bool get supportsNovel => true;
 
+  bool get requiresPlugin => false;
+
   SourceMethods createSourceMethods(Source source);
 
   final Map<ItemType, Rx<List<Source>>> _installed = {

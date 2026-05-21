@@ -35,6 +35,9 @@ class AniyomiExtensions extends Extension {
   bool get supportsNovel => false;
 
   @override
+  bool get requiresPlugin => true;
+
+  @override
   Future<void> fetchInstalledAnimeExtensions() async {
     getInstalledRx(ItemType.anime).value =
         await _loadInstalled('getInstalledAnimeExtensions', ItemType.anime);
