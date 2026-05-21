@@ -227,6 +227,68 @@ class SoraSourceMethods extends SourceMethods {
 
       resultMedia.episodes = await compute(_parseEpisodesResult, rawEpisodes);
 
+      try {
+        final rawDetails = await _call("extractDetails", [media.url]);
+        if (rawDetails != null) {
+          dynamic parsedDetails = rawDetails;
+          if (rawDetails is String) {
+            try {
+              parsedDetails = jsonDecode(rawDetails);
+            } catch (_) {}
+          }
+
+          Map<String, dynamic>? detailMap;
+          if (parsedDetails is List && parsedDetails.isNotEmpty) {
+            detailMap = Map<String, dynamic>.from(parsedDetails.first);
+          } else if (parsedDetails is Map) {
+            detailMap = Map<String, dynamic>.from(parsedDetails);
+          }
+
+          if (detailMap != null) {
+            resultMedia.description = detailMap['description']?.toString();
+            if (detailMap.containsKey('author')) {
+              resultMedia.author = detailMap['author']?.toString();
+            }
+            if (detailMap.containsKey('artist')) {
+              resultMedia.artist = detailMap['artist']?.toString();
+            }
+            if (detailMap.containsKey('genre')) {
+              final g = detailMap['genre'];
+              if (g is List) {
+                resultMedia.genre = g.map((e) => e.toString()).toList();
+              } else if (g is String) {
+                resultMedia.genre = g.split(',').map((e) => e.trim()).toList();
+              }
+            }
+
+            final aliases = detailMap['aliases']?.toString();
+            if (aliases != null) {
+              final authorMatch = RegExp(
+                r'Author\(s\):\s*(.*)',
+                caseSensitive: false,
+              ).firstMatch(aliases);
+              if (authorMatch != null && resultMedia.author == null) {
+                resultMedia.author = authorMatch.group(1)?.trim();
+              }
+
+              final genresMatch = RegExp(
+                r'Genres:\s*(.*)',
+                caseSensitive: false,
+              ).firstMatch(aliases);
+              if (genresMatch != null && (resultMedia.genre == null || resultMedia.genre!.isEmpty)) {
+                resultMedia.genre = genresMatch
+                    .group(1)
+                    ?.split(',')
+                    .map((e) => e.trim())
+                    .toList();
+              }
+            }
+          }
+        }
+      } catch (e) {
+        Logger.log("Sora: extractDetails failed or not implemented: $e");
+      }
+
       return resultMedia;
     } catch (e, s) {
       print("getDetails returned with $e - $s");
@@ -504,8 +566,17 @@ class SoraSourceMethods extends SourceMethods {
 
   @override
   Future<String?> getNovelContent(String chapterTitle, String chapterId,
-      {SourceParams? parameters}) {
-    throw UnimplementedError();
+      {SourceParams? parameters}) async {
+    try {
+      final res = await _call("extractText", [chapterId]);
+      if (res is String) {
+        return res;
+      }
+      return null;
+    } catch (e) {
+      Logger.log("Sora: getNovelContent failed: $e");
+      return null;
+    }
   }
 
   @override

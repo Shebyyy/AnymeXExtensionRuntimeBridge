@@ -62,6 +62,8 @@ class Source {
         'managerId': managerId,
         'hasUpdate': hasUpdate,
       };
+
+  String get uniqueId => id ?? '';
 }
 
 enum ItemType {

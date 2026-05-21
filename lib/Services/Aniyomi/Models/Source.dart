@@ -57,4 +57,7 @@ class ASource extends Source {
     final cleanedUrl = baseUrl.substring(0, lastSlash);
     return '$cleanedUrl/$apkName';
   }
+
+  @override
+  String get uniqueId => '${id}_$pkgName';
 }

@@ -52,4 +52,7 @@ class CloudStreamSource extends Source {
     map['plugin'] = pluginUrl;
     return map;
   }
+
+  @override
+  String get uniqueId => '${id}_$internalName';
 }

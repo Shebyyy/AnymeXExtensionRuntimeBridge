@@ -78,17 +78,23 @@ class DesktopAniyomiExtensions extends DesktopExtensionBase {
             map['type'] == 'anime' ? ItemType.anime : ItemType.manga;
         if (detectedType != type) continue;
 
-        final pkgName = map['pkgName'] as String?;
         final className = map['className'] as String;
+        final pkgName = (map['pkgName'] as String?)?.isNotEmpty == true
+            ? map['pkgName'] as String
+            : (className.contains('.')
+                ? className.substring(0, className.lastIndexOf('.'))
+                : className);
         final iconUrl = getVal<String>('desktop_ext_icon_$pkgName') ??
             'https://aniyomi.org/img/logo-128px.png';
+        final savedVersion = getVal<String>('desktop_ext_version_$pkgName');
+        final version = savedVersion ?? map['version'] as String? ?? '1.0.0';
 
         final aSource = ASource(
           id: map['id']?.toString() ?? className,
           name: map['name'] as String?,
           lang: map['lang'] as String?,
-          pkgName: pkgName ?? className,
-          version: map['version'] as String?,
+          pkgName: pkgName,
+          version: version,
           isNsfw: map['isNsfw'] as bool? ?? false,
           baseUrl: map['baseUrl'] as String?,
           itemType: detectedType,
@@ -385,6 +391,10 @@ class DesktopAniyomiExtensions extends DesktopExtensionBase {
       if (aSource.iconUrl != null) {
         setVal('desktop_ext_icon_$pkgName', aSource.iconUrl);
       }
+      final versionToSave = aSource.hasUpdate == true ? aSource.versionLast : aSource.version;
+      if (versionToSave != null) {
+        setVal('desktop_ext_version_$pkgName', versionToSave);
+      }
 
       try {
         if (File(tempZipPath).existsSync()) File(tempZipPath).deleteSync();
@@ -430,6 +440,7 @@ class DesktopAniyomiExtensions extends DesktopExtensionBase {
 
       if (File(jarPath).existsSync()) File(jarPath).deleteSync();
       KvStore.remove('desktop_ext_icon_$pkgName');
+      KvStore.remove('desktop_ext_version_$pkgName');
 
       final raw = getRawAvailableRx(s.itemType!).value;
       final installed =

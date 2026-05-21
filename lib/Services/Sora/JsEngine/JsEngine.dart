@@ -118,6 +118,9 @@ $sourceCode
 
   if (typeof extractImages === 'function')
     __exports.extractImages = extractImages;
+  
+  if (typeof extractText === 'function')
+    __exports.extractText = extractText;
 
   return __exports;
 })();
