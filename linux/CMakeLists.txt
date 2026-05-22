@@ -44,9 +44,32 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 # List of absolute paths to libraries that should be bundled with the plugin.
 # This list could contain prebuilt libraries, or libraries created by an
 # external build triggered from this build file.
+set(BUNDLE_LIBS "")
+
+set(DARTJNI_SO "${CMAKE_CURRENT_SOURCE_DIR}/../build/linux-jni/libdartjni.so")
+if(NOT EXISTS "${DARTJNI_SO}")
+  set(DARTJNI_SO_FALLBACK "${CMAKE_CURRENT_SOURCE_DIR}/../build/jni_libs/libdartjni.so")
+  if(EXISTS "${DARTJNI_SO_FALLBACK}")
+    set(DARTJNI_SO "${DARTJNI_SO_FALLBACK}")
+  endif()
+endif()
+if(EXISTS "${DARTJNI_SO}")
+  list(APPEND BUNDLE_LIBS "${DARTJNI_SO}")
+endif()
+
+set(JNI_JAR "${CMAKE_CURRENT_SOURCE_DIR}/../build/linux-jni/jni.jar")
+if(NOT EXISTS "${JNI_JAR}")
+  set(JNI_JAR_FALLBACK "${CMAKE_CURRENT_SOURCE_DIR}/../build/jni_libs/jni.jar")
+  if(EXISTS "${JNI_JAR_FALLBACK}")
+    set(JNI_JAR "${JNI_JAR_FALLBACK}")
+  endif()
+endif()
+if(EXISTS "${JNI_JAR}")
+  list(APPEND BUNDLE_LIBS "${JNI_JAR}")
+endif()
+
 set(anymex_extension_runtime_bridge_bundled_libraries
-  "${CMAKE_CURRENT_SOURCE_DIR}/../build/linux-jni/libdartjni.so"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../build/linux-jni/jni.jar"
+  "${BUNDLE_LIBS}"
   PARENT_SCOPE
 )
 
