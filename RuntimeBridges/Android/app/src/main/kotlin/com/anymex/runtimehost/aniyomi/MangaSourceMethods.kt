@@ -105,7 +105,7 @@ class MangaSourceMethods(sourceID: String, langIndex: Int = 0) : AniyomiSourceMe
             override var url: String = chapter.url
             override var name: String = chapter.name
             override var date_upload: Long = chapter.date_upload
-            override var episode_number: Float = findChapterNumber(chapter.name) ?: chapter.chapter_number
+            override var episode_number: Float = if (chapter.chapter_number >= 0f) chapter.chapter_number else findChapterNumber(chapter.name) ?: chapter.chapter_number
             override var fillermark: Boolean = false
             override var scanlator: String? = chapter.scanlator
             override var summary: String?= null
