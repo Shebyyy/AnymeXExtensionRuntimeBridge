@@ -25,6 +25,12 @@ Map<String, dynamic> _decodeJsonMap(String body) =>
     jsonDecode(body) as Map<String, dynamic>;
 String _encodeCloudStreamMeta(Map<String, dynamic> data) => jsonEncode(data);
 
+String _normalizeName(String? name) {
+  if (name == null) return '';
+  return name.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+}
+
+
 class DesktopCloudStreamExtensions extends DesktopExtensionBase {
   @override
   String get id => 'cloudstream-desktop';
@@ -86,7 +92,11 @@ class DesktopCloudStreamExtensions extends DesktopExtensionBase {
 
         final internalName = map['name'] as String?;
         if (internalName != null) {
-          final metaStr = getVal<String>('desktop_cs_meta_$internalName');
+          final norm = _normalizeName(internalName);
+          var metaStr = getVal<String>('desktop_cs_meta_$norm');
+          if (metaStr == null || metaStr.isEmpty) {
+            metaStr = getVal<String>('desktop_cs_meta_$internalName');
+          }
           if (metaStr != null && metaStr.isNotEmpty) {
             try {
               metas[internalName] = jsonDecode(metaStr);
@@ -95,11 +105,13 @@ class DesktopCloudStreamExtensions extends DesktopExtensionBase {
         }
 
         final meta = internalName != null ? metas[internalName] : null;
+        final rawLang = meta?['language'] as String? ?? map['lang'] as String?;
+        final lang = (rawLang == null || rawLang.trim().isEmpty) ? 'ALL' : rawLang;
 
         final source = CloudStreamSource(
           id: map['id']?.toString() ?? '',
           name: map['name'] as String?,
-          lang: meta?['language'] as String? ?? map['lang'] as String?,
+          lang: lang,
           version: meta?['version'] as String? ?? map['version'] as String?,
           isNsfw: map['isNsfw'] as bool? ?? false,
           baseUrl: map['baseUrl'] as String?,
@@ -145,16 +157,21 @@ class DesktopCloudStreamExtensions extends DesktopExtensionBase {
     }
 
     final installedNames =
-        installedAnimeExtensions.value.map((e) => e.name).toSet();
+        installedAnimeExtensions.value.map((e) => _normalizeName(e.name)).toSet();
     final installedInternalNames = installedAnimeExtensions.value
         .map((e) => (e as CloudStreamSource).internalName)
         .where((name) => name != null)
+        .map((name) => _normalizeName(name))
         .toSet();
 
     availableAnimeExtensions.value = allAvailable.where((s) {
       final source = s as CloudStreamSource;
-      return !installedNames.contains(source.name) &&
-          !installedInternalNames.contains(source.internalName);
+      final normName = _normalizeName(source.name);
+      final normInternalName = _normalizeName(source.internalName);
+      return !installedNames.contains(normName) &&
+          !installedInternalNames.contains(normName) &&
+          !installedNames.contains(normInternalName) &&
+          !installedInternalNames.contains(normInternalName);
     }).toList();
   }
 
@@ -383,6 +400,8 @@ class DesktopCloudStreamExtensions extends DesktopExtensionBase {
           'jarUrl': jarUrl,
         };
         final encodedMeta = await compute(_encodeCloudStreamMeta, metaToSave);
+        final norm = _normalizeName(source.internalName ?? source.name);
+        setVal('desktop_cs_meta_$norm', encodedMeta);
         setVal('desktop_cs_meta_${source.internalName ?? source.name}',
             encodedMeta);
 
@@ -418,6 +437,8 @@ class DesktopCloudStreamExtensions extends DesktopExtensionBase {
           Logger.log("Deleted plugin jar: ${file.path}");
         }
 
+        final norm = _normalizeName(source.internalName ?? source.name);
+        await KvStore.remove('desktop_cs_meta_$norm');
         await KvStore.remove(
             'desktop_cs_meta_${source.internalName ?? source.name}');
 
