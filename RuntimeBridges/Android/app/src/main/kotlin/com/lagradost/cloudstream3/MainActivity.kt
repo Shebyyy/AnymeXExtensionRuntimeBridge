@@ -28,6 +28,59 @@ val app: Requests by lazy {
         .addInterceptor(logging)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .cookieJar(object : okhttp3.CookieJar {
+            private val cookieStore = java.util.concurrent.ConcurrentHashMap<String, List<okhttp3.Cookie>>()
+            override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {
+                cookieStore[url.host] = cookies
+            }
+            override fun loadForRequest(url: okhttp3.HttpUrl): List<okhttp3.Cookie> {
+                val list = mutableListOf<okhttp3.Cookie>()
+                val memoryCookies = cookieStore[url.host]
+                if (memoryCookies != null) {
+                    list.addAll(memoryCookies)
+                }
+                try {
+                    val cookieManager = android.webkit.CookieManager.getInstance()
+                    val cookieString = cookieManager.getCookie(url.toString())
+                    if (!cookieString.isNullOrEmpty()) {
+                        cookieString.split(";").forEach { pair ->
+                            val cleanPair = pair.trim()
+                            if (cleanPair.isNotEmpty()) {
+                                val cookie = okhttp3.Cookie.parse(url, cleanPair)
+                                if (cookie != null) {
+                                    if (list.none { it.name == cookie.name }) {
+                                        list.add(cookie)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    System.err.println("[Cloudstream-Android] Failed to load cookies from CookieManager: ${e.message}")
+                }
+                return list
+            }
+        })
+        .addInterceptor { chain ->
+            val request = chain.request()
+            val host = request.url.host
+            var customUa = System.getProperty("anymex.ua.$host")
+            if (customUa.isNullOrEmpty()) {
+                val parts = host.split(".")
+                if (parts.size >= 2) {
+                    val parentDomain = parts.takeLast(2).joinToString(".")
+                    customUa = System.getProperty("anymex.ua.$parentDomain")
+                }
+            }
+            if (!customUa.isNullOrEmpty()) {
+                val newRequest = request.newBuilder()
+                    .header("User-Agent", customUa)
+                    .build()
+                chain.proceed(newRequest)
+            } else {
+                chain.proceed(request)
+            }
+        }
         .build()
 
     Requests(

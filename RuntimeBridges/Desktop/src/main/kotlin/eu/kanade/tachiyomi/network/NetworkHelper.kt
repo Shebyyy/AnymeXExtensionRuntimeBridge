@@ -80,6 +80,26 @@ class NetworkHelper(
                 }
                 chain.proceed(request)
             }
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val host = request.url.host
+                var customUa = System.getProperty("anymex.ua.$host")
+                if (customUa.isNullOrEmpty()) {
+                    val parts = host.split(".")
+                    if (parts.size >= 2) {
+                        val parentDomain = parts.takeLast(2).joinToString(".")
+                        customUa = System.getProperty("anymex.ua.$parentDomain")
+                    }
+                }
+                if (!customUa.isNullOrEmpty()) {
+                    val newRequest = request.newBuilder()
+                        .header("User-Agent", customUa)
+                        .build()
+                    chain.proceed(newRequest)
+                } else {
+                    chain.proceed(request)
+                }
+            }
         builder.build()
     }
 

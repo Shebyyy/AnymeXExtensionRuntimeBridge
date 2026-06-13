@@ -8,6 +8,7 @@ import 'package:http/io_client.dart';
 import 'package:http_interceptor/http_interceptor.dart';
 
 import '../../../ExtensionBridge.dart';
+import '../../../AnymeXBridge.dart';
 import '../Eval/dart/model/m_source.dart';
 
 class MClient {
@@ -93,12 +94,33 @@ class MCookieManager extends InterceptorContract {
 
   @override
   Future<BaseRequest> interceptRequest({required BaseRequest request}) async {
-    final cookie = MClient.getCookiesPref(request.url.toString());
-    if (cookie.isNotEmpty) {
-      final userAgent = ''; //loadData(PrefName.userAgent);
-      if (request.headers[HttpHeaders.cookieHeader] == null) {
-        request.headers.addAll(cookie);
+    final host = request.url.host;
+
+    var cookieStr = AnymeXRuntimeBridge.cookiesMap[host];
+    if (cookieStr == null) {
+      final parts = host.split('.');
+      if (parts.length >= 2) {
+        final parentDomain = parts.sublist(parts.length - 2).join('.');
+        cookieStr = AnymeXRuntimeBridge.cookiesMap[parentDomain];
       }
+    }
+
+    if (cookieStr != null && cookieStr.isNotEmpty) {
+      if (request.headers[HttpHeaders.cookieHeader] == null) {
+        request.headers[HttpHeaders.cookieHeader] = cookieStr;
+      }
+    }
+
+    var userAgent = AnymeXRuntimeBridge.userAgentMap[host];
+    if (userAgent == null) {
+      final parts = host.split('.');
+      if (parts.length >= 2) {
+        final parentDomain = parts.sublist(parts.length - 2).join('.');
+        userAgent = AnymeXRuntimeBridge.userAgentMap[parentDomain];
+      }
+    }
+
+    if (userAgent != null && userAgent.isNotEmpty) {
       if (request.headers[HttpHeaders.userAgentHeader] == null) {
         request.headers[HttpHeaders.userAgentHeader] = userAgent;
       }

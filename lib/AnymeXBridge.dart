@@ -14,8 +14,10 @@ class AnymeXRuntimeBridge {
 
   static AnymeXBridgeSettings settings = AnymeXBridgeSettings();
 
-  static bool get isSupportedPlatform =>
-      !Platform.isIOS;
+  static final Map<String, String> cookiesMap = {};
+  static final Map<String, String> userAgentMap = {};
+
+  static bool get isSupportedPlatform => !Platform.isIOS;
 
   /// Setup the AnymeX Runtime Bridge (Android APK or Desktop JRE/JAR).
   /// This handles downloading, tracking progress, and initialization.
@@ -172,6 +174,12 @@ class AnymeXRuntimeBridge {
   /// [url]          – origin URL the cookies belong to.
   /// [cookieString] – the raw `Set-Cookie` / `Cookie` header string,
   static Future<void> setCookies(String url, String cookieString) async {
+    try {
+      final host = Uri.parse(url).host;
+      if (host.isNotEmpty) {
+        cookiesMap[host] = cookieString;
+      }
+    } catch (_) {}
     if (!isSupportedPlatform) return;
     if (Platform.isAndroid) {
       try {
@@ -199,6 +207,12 @@ class AnymeXRuntimeBridge {
   /// [url]       – origin URL whose domain this UA should apply to.
   /// [userAgent] – the User-Agent string captured from the WebView solve.
   static Future<void> setUserAgent(String url, String userAgent) async {
+    try {
+      final host = Uri.parse(url).host;
+      if (host.isNotEmpty) {
+        userAgentMap[host] = userAgent;
+      }
+    } catch (_) {}
     if (!isSupportedPlatform) return;
     if (Platform.isAndroid) {
       try {

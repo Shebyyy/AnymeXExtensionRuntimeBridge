@@ -128,6 +128,26 @@ object KotatsuExtensionLoader {
         override val httpClient: OkHttpClient by lazy {
             OkHttpClient.Builder()
                 .cookieJar(cookieJar)
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    val host = request.url.host
+                    var customUa = System.getProperty("anymex.ua.$host")
+                    if (customUa.isNullOrEmpty()) {
+                        val parts = host.split(".")
+                        if (parts.size >= 2) {
+                            val parentDomain = parts.takeLast(2).joinToString(".")
+                            customUa = System.getProperty("anymex.ua.$parentDomain")
+                        }
+                    }
+                    if (!customUa.isNullOrEmpty()) {
+                        val newRequest = request.newBuilder()
+                            .header("User-Agent", customUa)
+                            .build()
+                        chain.proceed(newRequest)
+                    } else {
+                        chain.proceed(request)
+                    }
+                }
                 .build()
         }
 
@@ -137,7 +157,31 @@ object KotatsuExtensionLoader {
                 cookieStore[url.host] = cookies
             }
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                return cookieStore[url.host] ?: emptyList()
+                val list = mutableListOf<Cookie>()
+                val memoryCookies = cookieStore[url.host]
+                if (memoryCookies != null) {
+                    list.addAll(memoryCookies)
+                }
+                try {
+                    val cookieManager = android.webkit.CookieManager.getInstance()
+                    val cookieString = cookieManager.getCookie(url.toString())
+                    if (!cookieString.isNullOrEmpty()) {
+                        cookieString.split(";").forEach { pair ->
+                            val cleanPair = pair.trim()
+                            if (cleanPair.isNotEmpty()) {
+                                val cookie = Cookie.parse(url, cleanPair)
+                                if (cookie != null) {
+                                    if (list.none { it.name == cookie.name }) {
+                                        list.add(cookie)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    System.err.println("[Kotatsu-Android] Failed to load cookies from CookieManager: ${e.message}")
+                }
+                return list
             }
         }
 
@@ -220,7 +264,12 @@ object KotatsuExtensionLoader {
                     folder.listFiles { file -> file.name == "plugin.jar" || file.name == "kotatsu_plugin.jar" || (file.extension == "jar" && file.name.contains("kotatsu")) }?.forEach { jar ->
                         try {
                             val tempJar = File(context.cacheDir, "kotatsu_${jar.name}")
+                            if (tempJar.exists()) {
+                                tempJar.setWritable(true)
+                                tempJar.delete()
+                            }
                             jar.copyTo(tempJar, overwrite = true)
+                            tempJar.setReadOnly()
                             val classLoader = KotatsuAndroidPluginClassLoader(
                                 tempJar.absolutePath,
                                 context.cacheDir.absolutePath,
@@ -268,7 +317,12 @@ object KotatsuExtensionLoader {
                 
                 try {
                     val tempJar = File(context.cacheDir, "kotatsu_${jar.name}")
+                    if (tempJar.exists()) {
+                        tempJar.setWritable(true)
+                        tempJar.delete()
+                    }
                     jar.copyTo(tempJar, overwrite = true)
+                    tempJar.setReadOnly()
                     
                     val classLoader = KotatsuAndroidPluginClassLoader(
                         tempJar.absolutePath,
@@ -279,26 +333,89 @@ object KotatsuExtensionLoader {
                     
                     val classNames = mutableSetOf<String>()
 
-                    try {
-                        @Suppress("DEPRECATION")
-                        val dexFile = dalvik.system.DexFile(tempJar.absolutePath)
-                        val entries = dexFile.entries()
-                        while (entries.hasMoreElements()) {
-                            classNames.add(entries.nextElement())
+                    fun extractClassNamesFromDex(bytes: ByteArray): List<String> {
+                        val names = mutableListOf<String>()
+                        try {
+                            if (bytes.size < 112) return emptyList()
+                            if (bytes[0].toChar() != 'd' || bytes[1].toChar() != 'e' || bytes[2].toChar() != 'x') {
+                                return emptyList()
+                            }
+                            fun readInt(offset: Int): Int {
+                                return (bytes[offset].toInt() and 0xFF) or
+                                       ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
+                                       ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
+                                       ((bytes[offset + 3].toInt() and 0xFF) shl 24)
+                            }
+                            val stringIdsSize = readInt(56)
+                            val stringIdsOff = readInt(60)
+                            val typeIdsSize = readInt(64)
+                            val typeIdsOff = readInt(68)
+                            val classDefsSize = readInt(96)
+                            val classDefsOff = readInt(100)
+
+                            for (i in 0 until classDefsSize) {
+                                val classDefOffset = classDefsOff + i * 32
+                                if (classDefOffset + 4 > bytes.size) break
+                                val classIdx = readInt(classDefOffset)
+
+                                if (classIdx >= typeIdsSize) continue
+                                val typeOffset = typeIdsOff + classIdx * 4
+                                if (typeOffset + 4 > bytes.size) continue
+                                val descriptorIdx = readInt(typeOffset)
+
+                                if (descriptorIdx >= stringIdsSize) continue
+                                val stringOffsetOffset = stringIdsOff + descriptorIdx * 4
+                                if (stringOffsetOffset + 4 > bytes.size) continue
+                                val stringDataOff = readInt(stringOffsetOffset)
+
+                                if (stringDataOff >= bytes.size) continue
+
+                                var offset = stringDataOff
+                                var value = 0
+                                var shift = 0
+                                while (offset < bytes.size) {
+                                    val b = bytes[offset++].toInt() and 0xFF
+                                    value = value or ((b and 0x7F) shl shift)
+                                    if ((b and 0x80) == 0) break
+                                    shift += 7
+                                }
+
+                                val start = offset
+                                while (offset < bytes.size && bytes[offset] != 0.toByte()) {
+                                    offset++
+                                }
+                                
+                                if (offset > start) {
+                                    val stringBytes = bytes.copyOfRange(start, offset)
+                                    val descriptor = String(stringBytes, Charsets.UTF_8)
+                                    if (descriptor.startsWith("L") && descriptor.endsWith(";")) {
+                                        val className = descriptor.substring(1, descriptor.length - 1).replace('/', '.')
+                                        names.add(className)
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            System.err.println("[Kotatsu-Android] Error parsing DEX: ${e.message}")
                         }
-                    } catch (e: Exception) {
-                        System.err.println("[Kotatsu-Android] DexFile scan failed: ${e.message}. Trying ZipFile fallback.")
+                        return names
                     }
 
                     try {
                         val zipFile = ZipFile(tempJar)
                         for (entry in zipFile.entries()) {
-                            if (entry.name.endsWith(".class") && !entry.name.contains("$")) {
+                            if (entry.name.startsWith("classes") && entry.name.endsWith(".dex")) {
+                                zipFile.getInputStream(entry).use { inputStream ->
+                                    val bytes = inputStream.readBytes()
+                                    classNames.addAll(extractClassNamesFromDex(bytes))
+                                }
+                            } else if (entry.name.endsWith(".class") && !entry.name.contains("$")) {
                                 classNames.add(entry.name.replace("/", ".").removeSuffix(".class"))
                             }
                         }
                         zipFile.close()
                     } catch (e: Exception) {
+                        System.err.println("[Kotatsu-Android] Failed to scan zip/dex entries: ${e.message}")
+                        e.printStackTrace(System.err)
                     }
 
                     var errorCount = 0
