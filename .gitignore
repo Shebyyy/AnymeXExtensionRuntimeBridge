@@ -28,3 +28,4 @@ doc/api/
 
 !build/jni_libs/
 !build/jni_libs/*
+test/
