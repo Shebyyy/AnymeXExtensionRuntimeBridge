@@ -231,6 +231,7 @@ class CloudStreamSourceMethods(val provider: MainAPI) {
             return
         }
         val subtitles = java.util.concurrent.CopyOnWriteArrayList<Map<String, Any?>>()
+        val linksFound = java.util.concurrent.atomic.AtomicBoolean(false)
 
         try {
             provider.loadLinks(
@@ -250,6 +251,7 @@ class CloudStreamSourceMethods(val provider: MainAPI) {
                 },
                 { link ->
                     Log.d(TAG, "Link found (stream): ${link.url}")
+                    linksFound.set(true)
                     onLinkFound(linkToMap(link, subtitles.toList()))
                 }
             )
@@ -279,6 +281,7 @@ class CloudStreamSourceMethods(val provider: MainAPI) {
                         },
                         { link ->
                             Log.d(TAG, "Link found (stream-wrapped): ${link.url}")
+                            linksFound.set(true)
                             onLinkFound(linkToMap(link, subtitles.toList()))
                         }
                     )
@@ -290,7 +293,7 @@ class CloudStreamSourceMethods(val provider: MainAPI) {
             }
         }
 
-        if (data.startsWith("http") && !data.contains("[{") && !data.contains("{\"")) {
+        if (!linksFound.get() && data.startsWith("http") && !data.contains("[{") && !data.contains("{\"")) {
             Log.i(TAG, "Smart Fallback (stream): Calling provider.load($data)")
             try {
                 val res = provider.load(data)
@@ -315,12 +318,14 @@ class CloudStreamSourceMethods(val provider: MainAPI) {
                             )
                         },
                         { link ->
+                            linksFound.set(true)
                             onLinkFound(linkToMap(link, subtitles.toList()))
                         }
                     )
                 } else if (data.startsWith("http")) {
                     Log.i(TAG, "Final resort (stream): direct loadExtractor for: $data")
                     loadExtractor(data, "", { }, { link ->
+                        linksFound.set(true)
                         onLinkFound(linkToMap(link, emptyList()))
                     })
                 }
@@ -334,10 +339,11 @@ class CloudStreamSourceMethods(val provider: MainAPI) {
 
     private fun linkToMap(link: ExtractorLink, subtitles: List<Map<String, Any?>>): Map<String, Any?> {
         val finalHeaders = fixHeaders(link.headers, link.referer)
+        val qLabel = qualityLabel(link.quality)
         val baseMap = mutableMapOf<String, Any?>(
             "url" to link.url,
-            "title" to "${link.name} (${qualityLabel(link.quality)})",
-            "quality" to qualityLabel(link.quality),
+            "title" to if (qLabel.isEmpty()) link.name else "${link.name} ($qLabel)",
+            "quality" to qLabel,
             "headers" to finalHeaders,
             "isM3u8" to (link.type == ExtractorLinkType.M3U8),
             "subtitles" to subtitles,
@@ -391,7 +397,7 @@ class CloudStreamSourceMethods(val provider: MainAPI) {
     }
 
     private fun qualityLabel(quality: Int): String = when {
-        quality <= 0 -> "Unknown"
+        quality <= 0 || quality == 400 -> ""
         quality >= 2160 -> "4K"
         quality >= 1080 -> "1080p"
         quality >= 720 -> "720p"

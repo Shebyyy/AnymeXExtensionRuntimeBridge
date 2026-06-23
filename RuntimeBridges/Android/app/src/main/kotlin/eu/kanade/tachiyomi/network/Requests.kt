@@ -13,12 +13,19 @@ private val DEFAULT_CACHE_CONTROL = CacheControl.Builder().maxAge(10, MINUTES).b
 private val DEFAULT_HEADERS = Headers.Builder().build()
 private val DEFAULT_BODY: RequestBody = FormBody.Builder().build()
 
+fun String.normalizeUrl(): String {
+    if (isBlank()) return this
+    if (startsWith("http://") || startsWith("https://")) return this
+    if (startsWith("//")) return "https:$this"
+    return "https://$this"
+}
+
 fun GET(
     url: String,
     headers: Headers = DEFAULT_HEADERS,
     cache: CacheControl = DEFAULT_CACHE_CONTROL,
 ): Request {
-    val nUrl = url.toHttpUrl()
+    val nUrl = url.normalizeUrl().toHttpUrl()
     return GET(nUrl, headers, cache)
 }
 
@@ -44,7 +51,7 @@ fun POST(
     cache: CacheControl = DEFAULT_CACHE_CONTROL,
 ): Request {
     return Request.Builder()
-        .url(url)
+        .url(url.normalizeUrl())
         .post(body)
         .headers(headers)
         .cacheControl(cache)
@@ -58,7 +65,7 @@ fun PUT(
     cache: CacheControl = DEFAULT_CACHE_CONTROL,
 ): Request {
     return Request.Builder()
-        .url(url)
+        .url(url.normalizeUrl())
         .put(body)
         .headers(headers)
         .cacheControl(cache)
@@ -72,7 +79,7 @@ fun DELETE(
     cache: CacheControl = DEFAULT_CACHE_CONTROL,
 ): Request {
     return Request.Builder()
-        .url(url)
+        .url(url.normalizeUrl())
         .delete(body)
         .headers(headers)
         .cacheControl(cache)

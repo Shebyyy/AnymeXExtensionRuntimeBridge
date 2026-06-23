@@ -36,6 +36,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingletonFactory
 import uy.kohesive.injekt.api.get
 import java.io.File
+import eu.kanade.tachiyomi.network.normalizeUrl
 
 
 @Suppress("unused")
@@ -67,12 +68,6 @@ object RuntimeBridge {
         if (initialized) return
 
         Log.i(TAG, "Initializing Runtime Host - Version: 1.0.6")
-        
-        try {
-            okhttp3.OkHttp.initialize(context.applicationContext)
-        } catch (e: Throwable) {
-            Log.e(TAG, "Failed or skipped OkHttp startup: ${e.message}")
-        }
 
         try {
             Injekt.addSingletonFactory<android.app.Application> {
@@ -284,7 +279,7 @@ object RuntimeBridge {
             val anime = SAnime.create().apply {
                 title = mediaMap["title"] as? String ?: ""
                 url = mediaMap["url"] as? String ?: ""
-                thumbnail_url = mediaMap["thumbnail_url"] as? String
+                thumbnail_url = (mediaMap["thumbnail_url"] as? String)?.takeIf { it.isNotBlank() }?.normalizeUrl()
                 description = mediaMap["description"] as? String
                 artist = mediaMap["artist"] as? String
                 author = mediaMap["author"] as? String

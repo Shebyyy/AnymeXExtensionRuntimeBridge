@@ -194,10 +194,50 @@ enum class RequestBodyTypes(val value: String) {
 }
 
 class WebViewResolver(
-    val interceptUrl: Any? = null,
-    val additionalUrls: List<Any>? = null,
-    val useOkhttp: Boolean = false,
-    val timeout: Long = 0L
-)
+    val interceptUrl: Regex,
+    val additionalUrls: List<Regex> = emptyList(),
+    val userAgent: String? = null,
+    val useOkhttp: Boolean = true,
+    val script: String? = null,
+    val scriptCallback: ((String) -> Unit)? = null,
+    val timeout: Long = 60000L
+) : okhttp3.Interceptor {
+    companion object {
+        var webViewUserAgent: String? = null
+        val DEFAULT_TIMEOUT = 60_000L
+        @kotlin.jvm.JvmName("getWebViewUserAgent1")
+        fun getWebViewUserAgent(): String? = webViewUserAgent
+    }
+
+    override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
+        return chain.proceed(chain.request())
+    }
+
+    suspend fun resolveUsingWebView(
+        url: String,
+        referer: String? = null,
+        method: String = "GET",
+        requestCallBack: (okhttp3.Request) -> Boolean = { false },
+    ) : Pair<okhttp3.Request?, List<okhttp3.Request>> {
+        return null to emptyList()
+    }
+
+    suspend fun resolveUsingWebView(
+        url: String,
+        referer: String? = null,
+        headers: Map<String, String> = emptyMap(),
+        method: String = "GET",
+        requestCallBack: (okhttp3.Request) -> Boolean = { false },
+    ) : Pair<okhttp3.Request?, List<okhttp3.Request>> {
+        return null to emptyList()
+    }
+
+    suspend fun resolveUsingWebView(
+        request: okhttp3.Request,
+        requestCallBack: (okhttp3.Request) -> Boolean = { false }
+    ): Pair<okhttp3.Request?, List<okhttp3.Request>> {
+        return null to emptyList()
+    }
+}
 
 fun getCaptchaToken(url: String, key: String, referer: String? = null): String? = null

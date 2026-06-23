@@ -31,7 +31,7 @@ class Videa : ExtractorApi() {
         while (true) {
             val webUrl = getXmlUrl(currentUrl) { cookie -> /* no-op, cookie not used */ } ?: return
             val response = app.get(webUrl)
-            val rawBytes = response.okhttpResponse.body.bytes()
+            val rawBytes = response.okhttpResponse.body!!.bytes()
 
             // Check if response starts with XML declaration
             val isXml = rawBytes.size >= 5 &&

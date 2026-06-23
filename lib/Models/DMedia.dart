@@ -28,11 +28,12 @@ class DMedia {
             .map((e) => DEpisode.fromJson(Map<String, dynamic>.from(e)))
             .toList()
         : <DEpisode>[];
+    final poster = json['cover'] ?? json['posterUrl'] ?? json['thumbnail_url'];    
 
     return DMedia(
       title: json['title'] ?? json['name'],
       url: json['url'],
-      cover: json['cover'] ?? json['posterUrl'] ?? json['thumbnail_url'],
+      cover: json['thumbnail_url'] ?? poster,
       description: json['description'],
       artist: json['artist'],
       author: json['author'],

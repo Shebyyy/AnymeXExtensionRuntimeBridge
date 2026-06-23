@@ -21,6 +21,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.regex.Matcher
 import java.util.regex.Pattern
+import eu.kanade.tachiyomi.network.normalizeUrl
 
 @Suppress("PrivatePropertyName")
 class MangaSourceMethods(sourceID: String, langIndex: Int = 0) : AniyomiSourceMethods {
@@ -65,7 +66,15 @@ class MangaSourceMethods(sourceID: String, langIndex: Int = 0) : AniyomiSourceMe
     }
 
     override suspend fun getDetails(media: SAnime): SAnime {
-        return source.getMangaDetails(media.toSManga()).toSAnime()
+        val smanga = media.toSManga()
+        try {
+            val details = source.getMangaDetails(smanga)
+            return details.toSAnime(smanga.url)
+        } catch (e: Throwable) {
+            Logger.log("getDetails failed: message=${e.message}")
+            e.printStackTrace()
+            throw e
+        }
     }
 
     override suspend fun getChapterList(media: SAnime): List<SEpisode> {
@@ -123,24 +132,22 @@ class MangaSourceMethods(sourceID: String, langIndex: Int = 0) : AniyomiSourceMe
             override var description: String? = anime.description
             override var genre: String? = anime.genre
             override var status: Int = anime.status
-            override var thumbnail_url: String? = anime.thumbnail_url
+            override var thumbnail_url: String? = anime.thumbnail_url?.takeIf { it.isNotBlank() }?.normalizeUrl()
             override var update_strategy: UpdateStrategy = UpdateStrategy.ALWAYS_UPDATE
             override var initialized: Boolean = anime.initialized
         }
     }
 
-    fun SManga.toSAnime(): SAnime {
+    fun SManga.toSAnime(fallbackUrl: String? = null): SAnime {
         val manga = this
 
         return object : SAnime {
-            override var url: String = runCatching { manga.url }.getOrElse {
-                Logger.log("Uninitialized URL for SManga: ${safeUrl(manga)}")
-                "[UNINITIALIZED_URL]"
-            }
+            override var url: String = runCatching { manga.url }.getOrNull()?.takeIf { it.isNotBlank() }
+                ?: fallbackUrl
+                ?: ""
 
             override var title: String = runCatching { manga.title }.getOrElse {
-                Logger.log( "Uninitialized title for SManga: ${safeTitle(manga)}")
-                "[UNINITIALIZED_TITLE]"
+                ""
             }
 
             override var artist: String? = runCatching { manga.artist }.getOrNull()
@@ -148,7 +155,7 @@ class MangaSourceMethods(sourceID: String, langIndex: Int = 0) : AniyomiSourceMe
             override var description: String? = runCatching { manga.description }.getOrNull()
             override var genre: String? = runCatching { manga.genre }.getOrNull()
             override var status: Int = runCatching { manga.status }.getOrDefault(SAnime.UNKNOWN)
-            override var thumbnail_url: String? = runCatching { manga.thumbnail_url }.getOrNull()
+            override var thumbnail_url: String? = runCatching { manga.thumbnail_url }.getOrNull()?.takeIf { it.isNotBlank() }?.normalizeUrl()
             override var background_url: String? = null
             override var update_strategy: AnimeUpdateStrategy =
                 runCatching { AnimeUpdateStrategy.ALWAYS_UPDATE }.getOrDefault(AnimeUpdateStrategy.ALWAYS_UPDATE)

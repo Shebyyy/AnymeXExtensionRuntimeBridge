@@ -182,7 +182,7 @@ object KotatsuExtensionLoader {
                     list.addAll(memoryCookies)
                 }
                 try {
-                    val uri = url.uri()
+                    val uri = url.toUri()
                     val sharedCookies = eu.kanade.tachiyomi.network.NetworkHelper.sharedCookieManager.cookieStore.get(uri)
                     sharedCookies.forEach { httpCookie ->
                         val cookieStr = "${httpCookie.name}=${httpCookie.value}"

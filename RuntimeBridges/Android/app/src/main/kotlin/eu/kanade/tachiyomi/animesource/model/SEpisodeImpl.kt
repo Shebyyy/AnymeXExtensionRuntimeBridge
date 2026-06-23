@@ -4,9 +4,9 @@ package eu.kanade.tachiyomi.animesource.model
 
 class SEpisodeImpl : SEpisode {
 
-    override lateinit var url: String
+    override var url: String = ""
 
-    override lateinit var name: String
+    override var name: String = ""
 
     override var date_upload: Long = 0
 

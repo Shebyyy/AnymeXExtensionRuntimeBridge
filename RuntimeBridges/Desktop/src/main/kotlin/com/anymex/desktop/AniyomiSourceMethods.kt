@@ -18,6 +18,7 @@ import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.api.addSingletonFactory
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.serialization.json.Json
+import eu.kanade.tachiyomi.network.normalizeUrl
 object AniyomiSourceMethods {
     private val gson = Gson()
     
@@ -216,7 +217,7 @@ object AniyomiSourceMethods {
                 val animeObj = SAnime.create().apply {
                     this.url = url
                     this.title = title
-                    this.thumbnail_url = cover
+                    this.thumbnail_url = cover.takeIf { it.isNotBlank() }?.normalizeUrl()
                 }
                 val details = source.getAnimeDetails(animeObj)
                 val episodes = source.getEpisodeList(animeObj)
@@ -231,7 +232,7 @@ object AniyomiSourceMethods {
                 val manga = SManga.create().apply {
                     this.url = url
                     this.title = title
-                    this.thumbnail_url = cover
+                    this.thumbnail_url = cover.takeIf { it.isNotBlank() }?.normalizeUrl()
                 }
                 val details = source.getMangaDetails(manga)
                 val chapters = source.getChapterList(manga)
