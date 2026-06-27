@@ -130,7 +130,13 @@ class RemoteSidecarBridge {
       keyPair = config.keyPair!;
     } else if (config.privateKeyPem != null &&
         config.privateKeyPem!.isNotEmpty) {
-      keyPair = SSHKeyPair.fromPem(config.privateKeyPem!);
+      // dartssh2 2.10+: SSHKeyPair.fromPem returns List<SSHKeyPair>
+      // (a single PEM can contain multiple keys). We take the first.
+      final parsed = SSHKeyPair.fromPem(config.privateKeyPem!);
+      if (parsed.isEmpty) {
+        throw StateError('Failed to parse any SSH key from privateKeyPem');
+      }
+      keyPair = parsed.first;
     } else {
       throw StateError(
         'RemoteBridgeConfig needs either keyPair or privateKeyPem',
@@ -148,7 +154,7 @@ class RemoteSidecarBridge {
       identities: [keyPair],
       // Server uses BYO-key model: accept any host key the first time.
       // For production, ship a pinned host key fingerprint.
-      onVerifyHostKey: (hostKey) => true,
+      disableHostkeyVerification: true,
     );
 
     // Open ONE exec channel for the whole app lifetime. The server treats
@@ -158,11 +164,13 @@ class RemoteSidecarBridge {
     // Split the stdout stream into line-delimited JSON.
     _incomingLines = StreamController<String>();
     _session!.stdout
+        .cast<List<int>>()
         .transform(const Utf8Decoder(allowMalformed: true))
         .transform(const LineSplitter())
         .listen(_handleResponse, onError: (e) => print('[remote-bridge] stdout err: $e'));
 
     _session!.stderr
+        .cast<List<int>>()
         .transform(const Utf8Decoder(allowMalformed: true))
         .transform(const LineSplitter())
         .listen((line) => print('[remote-bridge] [server] $line'));

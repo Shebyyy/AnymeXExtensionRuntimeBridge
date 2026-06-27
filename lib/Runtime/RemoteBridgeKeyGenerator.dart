@@ -21,8 +21,15 @@ class RemoteBridgeKeyGenerator {
     final algorithm = Ed25519();
     final keyPair = await algorithm.newKeyPair();
 
-    final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
-    final publicKeyBytes = await keyPair.extractPublicKeyBytes();
+    // cryptography 2.9.0 API: extractPrivateKeyBytes returns List<int>,
+    // and there's no extractPublicKeyBytes on SimpleKeyPair — we go via
+    // extractPublicKey() then read .bytes. Both are wrapped to Uint8List
+    // because _encodeOpenSshEd25519Pem requires typed byte buffers for
+    // setRange() below.
+    final privateKeyBytes =
+        Uint8List.fromList(await keyPair.extractPrivateKeyBytes());
+    final publicKey = await keyPair.extractPublicKey();
+    final publicKeyBytes = Uint8List.fromList(publicKey.bytes);
 
     return _encodeOpenSshEd25519Pem(
       privateKeyBytes: privateKeyBytes,

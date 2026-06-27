@@ -11,7 +11,7 @@ import '../../Runtime/Bridge/BridgeDispatcher.dart';
 import '../../Runtime/RuntimeController.dart';
 import '../Aniyomi/Models/Source.dart';
 import '../AniyomiDesktop/DesktopAniyomiExtensions.dart';
-import 'RemoteAniyomiSourceMethods.dart';
+import '../AniyomiDesktop/DesktopAniyomiSourceMethods.dart';
 
 /// iOS variant of [DesktopAniyomiExtensions].
 ///
@@ -111,11 +111,12 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
   }
 
   @override
-  Future<void> installSource(Source source) async {
+  Future<void> installSource(Source source, {String? customPath}) async {
     try {
       await BridgeDispatcher().invokeMethod('install', {
         'extId': source.id,
         'repoUrl': source.repo ?? '',
+        if (customPath != null) 'customPath': customPath,
       });
       // Refresh installed list after install.
       await fetchInstalledAnimeExtensions();

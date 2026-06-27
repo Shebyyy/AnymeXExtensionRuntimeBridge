@@ -82,11 +82,12 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
   }
 
   @override
-  Future<void> installSource(Source source) async {
+  Future<void> installSource(Source source, {String? customPath}) async {
     try {
       await BridgeDispatcher().invokeMethod('install', {
         'extId': source.id,
         'repoUrl': source.repo ?? '',
+        if (customPath != null) 'customPath': customPath,
       });
       await fetchInstalledAnimeExtensions();
       await fetchInstalledMangaExtensions();
