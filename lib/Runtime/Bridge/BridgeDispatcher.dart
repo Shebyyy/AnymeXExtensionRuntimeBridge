@@ -1,9 +1,14 @@
 import 'package:get/get.dart';
 import 'JniBridge.dart';
 import 'SidecarBridge.dart';
+import 'RemoteSidecarBridge.dart';
 import '../../ExtensionManager.dart';
 
-enum BridgeType { jni, sidecar }
+/// Bridge transport modes.
+///   - [jni]     Android: in-process JNI via MethodChannel
+///   - [sidecar] Desktop: local `java -jar` subprocess
+///   - [remote]  iOS (or any platform): SSH to a remote bridge server
+enum BridgeType { jni, sidecar, remote }
 
 class BridgeDispatcher {
   static final BridgeDispatcher _instance = BridgeDispatcher._internal();
@@ -27,10 +32,18 @@ class BridgeDispatcher {
   BridgeType get mode => _mode;
 
   Future<void> initialize(String bridgeJarPath) async {
-    if (_mode == BridgeType.jni) {
-      await JniBridge().initialize(bridgeJarPath);
-    } else {
-      await SidecarBridge().initialize(bridgeJarPath);
+    switch (_mode) {
+      case BridgeType.jni:
+        await JniBridge().initialize(bridgeJarPath);
+        break;
+      case BridgeType.sidecar:
+        await SidecarBridge().initialize(bridgeJarPath);
+        break;
+      case BridgeType.remote:
+        // No-op: RemoteSidecarBridge.configure() must be called separately
+        // (it doesn't need a JAR path — the server manages the JAR).
+        await RemoteSidecarBridge().initialize(bridgeJarPath);
+        break;
     }
   }
 
@@ -39,34 +52,49 @@ class BridgeDispatcher {
     Map<String, dynamic> args, {
     Duration timeout = const Duration(seconds: 60),
   }) async {
-    if (_mode == BridgeType.jni) {
-      return await JniBridge().invokeMethod(method, args);
-    } else {
-      return await SidecarBridge().invokeMethod(method, args, timeout: timeout);
+    switch (_mode) {
+      case BridgeType.jni:
+        return await JniBridge().invokeMethod(method, args);
+      case BridgeType.sidecar:
+        return await SidecarBridge().invokeMethod(method, args, timeout: timeout);
+      case BridgeType.remote:
+        return await RemoteSidecarBridge().invokeMethod(method, args, timeout: timeout);
     }
   }
 
   Stream<dynamic> invokeStreamMethod(String method, Map<String, dynamic> args) {
-    if (_mode == BridgeType.jni) {
-      return const Stream.empty();
-    } else {
-      return SidecarBridge().invokeStreamMethod(method, args);
+    switch (_mode) {
+      case BridgeType.jni:
+        return const Stream.empty();
+      case BridgeType.sidecar:
+        return SidecarBridge().invokeStreamMethod(method, args);
+      case BridgeType.remote:
+        return RemoteSidecarBridge().invokeStreamMethod(method, args);
     }
   }
 
   Future<bool> cancelRequest(String id) async {
-    if (_mode == BridgeType.jni) {
-      return JniBridge().cancelRequest(id);
-    } else {
-      return SidecarBridge().cancelRequest(id);
+    switch (_mode) {
+      case BridgeType.jni:
+        return JniBridge().cancelRequest(id);
+      case BridgeType.sidecar:
+        return SidecarBridge().cancelRequest(id);
+      case BridgeType.remote:
+        return RemoteSidecarBridge().cancelRequest(id);
     }
   }
 
   void dispose() {
-    if (_mode == BridgeType.jni) {
-      JniBridge().dispose();
-    } else {
-      SidecarBridge().dispose();
+    switch (_mode) {
+      case BridgeType.jni:
+        JniBridge().dispose();
+        break;
+      case BridgeType.sidecar:
+        SidecarBridge().dispose();
+        break;
+      case BridgeType.remote:
+        RemoteSidecarBridge().dispose();
+        break;
     }
   }
 }

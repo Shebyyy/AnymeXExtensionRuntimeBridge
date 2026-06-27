@@ -5,10 +5,16 @@ import 'package:get/get.dart';
 
 import 'Services/Aniyomi/AniyomiExtensions.dart';
 import 'Services/Aniyomi/Models/Source.dart';
+import 'Services/AniyomiRemote/RemoteAniyomiExtensions.dart';
 import 'Services/CloudStream/CloudStreamExtensions.dart';
+import 'Services/CloudStreamRemote/RemoteCloudStreamExtensions.dart';
+import 'Services/KotatsuRemote/RemoteKotatsuExtensions.dart';
 import 'Services/Mangayomi/MangayomiExtensions.dart';
 import 'Services/Sora/Models/Source.dart';
 import 'Services/Sora/SoraExtensions.dart';
+import 'Runtime/Bridge/BridgeDispatcher.dart';
+import 'Runtime/Bridge/RemoteSidecarBridge.dart';
+import 'Runtime/RemoteBridgeSettings.dart';
 import 'anymex_extension_runtime_bridge.dart';
 
 class ExtensionManager extends GetxController {
@@ -46,8 +52,133 @@ class ExtensionManager extends GetxController {
       MangayomiExtensions(),
     ]);
 
-    await onRuntimeBridgeInitialization();
+    // On iOS the local runtime can't run — auto-connect to the remote
+    // bridge if the user has previously configured it (host/port/key
+    // persisted from a prior session). If they haven't configured it
+    // yet, the Extension Manager screen will show the connect UI; once
+    // they connect, onRuntimeBridgeInitialization() is called manually.
+    if (Platform.isIOS) {
+      await _autoConnectRemoteBridgeIfConfigured();
+    } else {
+      await onRuntimeBridgeInitialization();
+    }
   }
+
+  /// On iOS: if the user has previously saved remote bridge settings,
+  /// connect now and register the remote extensions.
+  Future<void> _autoConnectRemoteBridgeIfConfigured() async {
+    try {
+      final settings = await RemoteBridgeSettings.load();
+      final hasKey = await settings.hasSavedKey;
+      if (!hasKey) return;
+
+      final sshConfig = settings.toSSHConfig();
+      if (sshConfig == null) return;
+
+      await RemoteSidecarBridge().configure(sshConfig);
+      await settings.markConnected();
+
+      setBridgeType(BridgeType.remote);
+      await _registerAndInitializeManagers(
+        [
+          RemoteAniyomiExtensions(),
+          RemoteCloudStreamExtensions(),
+          RemoteKotatsuExtensions(),
+        ],
+        insertAtStart: true,
+      );
+    } catch (e) {
+      Logger.log('ExtensionManager: auto-connect remote bridge failed: $e');
+    }
+  }
+
+  /// Manually connect to a remote bridge server (called from the
+  /// Extension Manager settings UI on iOS).
+  ///
+  /// On success: persists settings, switches to BridgeType.remote,
+  /// registers RemoteAniyomi/CloudStream/Kotatsu extensions.
+  ///
+  /// [onProgress] is optional — called with status strings for UI feedback.
+  Future<void> connectRemoteBridge(
+    String host,
+    int port, {
+    String? username,
+    String? privateKeyPem,
+    void Function(String status)? onProgress,
+  }) async {
+    onProgress?.call('Validating settings…');
+    final effectiveUsername =
+        (username == null || username.trim().isEmpty)
+            ? RemoteBridgeSettings.defaultUsername
+            : username.trim();
+    final effectiveHost =
+        host.trim().isEmpty ? RemoteBridgeSettings.defaultHost : host.trim();
+    final effectivePort =
+        (port < 1 || port > 65535) ? RemoteBridgeSettings.defaultPort : port;
+
+    final settings = RemoteBridgeSettings(
+      host: effectiveHost,
+      port: effectivePort,
+      username: effectiveUsername,
+      privateKeyPem: privateKeyPem,
+    );
+
+    if (privateKeyPem == null || privateKeyPem.isEmpty) {
+      throw StateError(
+        'A private key is required. Generate one first via generateKeyPair().',
+      );
+    }
+
+    onProgress?.call('Connecting to $effectiveHost:$effectivePort…');
+    final sshConfig = RemoteBridgeConfig.fromPem(
+      host: effectiveHost,
+      port: effectivePort,
+      username: effectiveUsername,
+      privateKeyPem: privateKeyPem,
+    );
+    await RemoteSidecarBridge().configure(sshConfig);
+
+    onProgress?.call('Persisting settings…');
+    await settings.save();
+    await settings.savePrivateKey(privateKeyPem);
+    await settings.markConnected();
+
+    onProgress?.call('Switching bridge mode to remote…');
+    setBridgeType(BridgeType.remote);
+
+    onProgress?.call('Registering remote extensions…');
+    await _registerAndInitializeManagers(
+      [
+        RemoteAniyomiExtensions(),
+        RemoteCloudStreamExtensions(),
+        RemoteKotatsuExtensions(),
+      ],
+      insertAtStart: true,
+      force: true,
+    );
+
+    onProgress?.call('Connected');
+  }
+
+  /// Disconnect from the remote bridge and forget the saved key.
+  /// Sora + Mangayomi keep working (they use local QuickJS, not the bridge).
+  Future<void> disconnectRemoteBridge() async {
+    RemoteSidecarBridge().dispose();
+    final settings = await RemoteBridgeSettings.load();
+    await settings.clearPrivateKey();
+    // Remove the remote extensions from the manager list.
+    managers.value = managers
+        .where((m) =>
+            m.id != 'aniyomi-remote' &&
+            m.id != 'cloudstream-remote' &&
+            m.id != 'kotatsu-remote')
+        .toList();
+  }
+
+  /// True if the remote bridge is currently connected.
+  bool get isRemoteBridgeConnected =>
+      bridgeType.value == BridgeType.remote &&
+      RemoteSidecarBridge().isInitialized;
 
   Future<void> onRuntimeBridgeInitialization({
     bool force = false,

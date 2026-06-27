@@ -30,4 +30,10 @@ export './Services/Kotatsu/KotatsuExtensions.dart';
 export './Services/Kotatsu/KotatsuSourceMethods.dart';
 export './Services/KotatsuDesktop/DesktopKotatsuExtensions.dart';
 export './Services/KotatsuDesktop/DesktopKotatsuSourceMethods.dart';
+export './Services/KotatsuRemote/RemoteKotatsuExtensions.dart';
+export './Services/CloudStreamRemote/RemoteCloudStreamExtensions.dart';
+export './Services/AniyomiRemote/RemoteAniyomiExtensions.dart';
+export './Runtime/RemoteBridgeSettings.dart';
+export './Runtime/RemoteBridgeKeyGenerator.dart';
+export './Runtime/Bridge/RemoteSidecarBridge.dart';
 
