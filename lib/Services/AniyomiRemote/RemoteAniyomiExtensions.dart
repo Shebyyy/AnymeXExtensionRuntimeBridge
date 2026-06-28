@@ -8,6 +8,7 @@ import '../../Models/Source.dart';
 import '../../Extensions/Extensions.dart';
 import '../../Extensions/SourceMethods.dart';
 import '../../Runtime/Bridge/BridgeDispatcher.dart';
+import '../../Runtime/Bridge/RemoteSidecarBridge.dart';
 import '../../Runtime/RuntimeController.dart';
 import '../Aniyomi/Models/Source.dart';
 import '../AniyomiDesktop/DesktopAniyomiExtensions.dart';
@@ -87,7 +88,7 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
   @override
   Future<void> addRepo(String repoUrl, ItemType type) async {
     try {
-      await BridgeDispatcher().invokeMethod('addRepo', {
+      await RemoteSidecarBridge().invokeBridgeAction('addRepo', {
         'repoUrl': repoUrl,
         'itemType': type.name,
       });
@@ -100,7 +101,7 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
   @override
   Future<void> removeRepo(String repoUrl, ItemType type) async {
     try {
-      await BridgeDispatcher().invokeMethod('removeRepo', {
+      await RemoteSidecarBridge().invokeBridgeAction('removeRepo', {
         'repoUrl': repoUrl,
         'itemType': type.name,
       });
@@ -113,7 +114,7 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
   @override
   Future<void> installSource(Source source, {String? customPath}) async {
     try {
-      await BridgeDispatcher().invokeMethod('install', {
+      await RemoteSidecarBridge().invokeBridgeAction('install', {
         'extId': source.id,
         'repoUrl': source.repo ?? '',
         if (customPath != null) 'customPath': customPath,
@@ -130,7 +131,7 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
   @override
   Future<void> uninstallSource(Source source) async {
     try {
-      await BridgeDispatcher().invokeMethod('uninstall', {
+      await RemoteSidecarBridge().invokeBridgeAction('uninstall', {
         'extId': source.id,
       });
       await fetchInstalledAnimeExtensions();

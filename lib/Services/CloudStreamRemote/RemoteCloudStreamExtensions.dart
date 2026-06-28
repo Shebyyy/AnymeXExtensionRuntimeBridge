@@ -8,6 +8,7 @@ import '../../Models/Source.dart';
 import '../../Extensions/Extensions.dart';
 import '../../Extensions/SourceMethods.dart';
 import '../../Runtime/Bridge/BridgeDispatcher.dart';
+import '../../Runtime/Bridge/RemoteSidecarBridge.dart';
 import '../../Runtime/RuntimeController.dart';
 import '../CloudStreamDesktop/DesktopCloudStreamExtensions.dart';
 import '../CloudStreamDesktop/DesktopCloudStreamSourceMethods.dart';
@@ -62,8 +63,8 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
   @override
   Future<void> addRepo(String repoUrl, ItemType type) async {
     try {
-      await BridgeDispatcher()
-          .invokeMethod('addRepo', {'repoUrl': repoUrl, 'itemType': type.name});
+      await RemoteSidecarBridge()
+          .invokeBridgeAction('addRepo', {'repoUrl': repoUrl, 'itemType': type.name});
     } catch (e) {
       Logger.log('RemoteCloudStreamExtensions.addRepo: $e');
       rethrow;
@@ -73,7 +74,7 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
   @override
   Future<void> removeRepo(String repoUrl, ItemType type) async {
     try {
-      await BridgeDispatcher().invokeMethod(
+      await RemoteSidecarBridge().invokeBridgeAction(
           'removeRepo', {'repoUrl': repoUrl, 'itemType': type.name});
     } catch (e) {
       Logger.log('RemoteCloudStreamExtensions.removeRepo: $e');
@@ -84,7 +85,7 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
   @override
   Future<void> installSource(Source source, {String? customPath}) async {
     try {
-      await BridgeDispatcher().invokeMethod('install', {
+      await RemoteSidecarBridge().invokeBridgeAction('install', {
         'extId': source.id,
         'repoUrl': source.repo ?? '',
         if (customPath != null) 'customPath': customPath,
@@ -100,8 +101,8 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
   @override
   Future<void> uninstallSource(Source source) async {
     try {
-      await BridgeDispatcher()
-          .invokeMethod('uninstall', {'extId': source.id});
+      await RemoteSidecarBridge()
+          .invokeBridgeAction('uninstall', {'extId': source.id});
       await fetchInstalledAnimeExtensions();
       await fetchInstalledMangaExtensions();
     } catch (e) {

@@ -8,6 +8,7 @@ import '../../Models/Source.dart';
 import '../../Extensions/Extensions.dart';
 import '../../Extensions/SourceMethods.dart';
 import '../../Runtime/Bridge/BridgeDispatcher.dart';
+import '../../Runtime/Bridge/RemoteSidecarBridge.dart';
 import '../../Runtime/RuntimeController.dart';
 import '../KotatsuDesktop/DesktopKotatsuExtensions.dart';
 import '../KotatsuDesktop/DesktopKotatsuSourceMethods.dart';
@@ -62,8 +63,8 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
   @override
   Future<void> addRepo(String repoUrl, ItemType type) async {
     try {
-      await BridgeDispatcher()
-          .invokeMethod('addRepo', {'repoUrl': repoUrl, 'itemType': type.name});
+      await RemoteSidecarBridge()
+          .invokeBridgeAction('addRepo', {'repoUrl': repoUrl, 'itemType': type.name});
     } catch (e) {
       Logger.log('RemoteKotatsuExtensions.addRepo: $e');
       rethrow;
@@ -73,7 +74,7 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
   @override
   Future<void> removeRepo(String repoUrl, ItemType type) async {
     try {
-      await BridgeDispatcher().invokeMethod(
+      await RemoteSidecarBridge().invokeBridgeAction(
           'removeRepo', {'repoUrl': repoUrl, 'itemType': type.name});
     } catch (e) {
       Logger.log('RemoteKotatsuExtensions.removeRepo: $e');
@@ -84,7 +85,7 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
   @override
   Future<void> installSource(Source source) async {
     try {
-      await BridgeDispatcher().invokeMethod('install', {
+      await RemoteSidecarBridge().invokeBridgeAction('install', {
         'extId': source.id,
         'repoUrl': source.repo ?? '',
       });
@@ -99,8 +100,8 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
   @override
   Future<void> uninstallSource(Source source) async {
     try {
-      await BridgeDispatcher()
-          .invokeMethod('uninstall', {'extId': source.id});
+      await RemoteSidecarBridge()
+          .invokeBridgeAction('uninstall', {'extId': source.id});
       await fetchInstalledAnimeExtensions();
       await fetchInstalledMangaExtensions();
     } catch (e) {

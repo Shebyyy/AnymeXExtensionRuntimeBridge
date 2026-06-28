@@ -485,15 +485,21 @@ Extension getSourceManager(Source source) {
   final em = Get.find<ExtensionManager>();
 
   if (source is ASource) {
-    return em.findById('aniyomi') ?? em.findById('aniyomi-desktop')!;
+    return em.findById('aniyomi') ??
+        em.findById('aniyomi-remote') ??
+        em.findById('aniyomi-desktop')!;
   }
   if (source is MSource) return em.findById('mangayomi')!;
   if (source is SSource) return em.findById('sora')!;
   if (source is CloudStreamSource) {
-    return em.findById('cloudstream') ?? em.findById('cloudstream-desktop')!;
+    return em.findById('cloudstream') ??
+        em.findById('cloudstream-remote') ??
+        em.findById('cloudstream-desktop')!;
   }
   if (source is KotatsuSource) {
-    return em.findById('kotatsu') ?? em.findById('kotatsu-desktop')!;
+    return em.findById('kotatsu') ??
+        em.findById('kotatsu-remote') ??
+        em.findById('kotatsu-desktop')!;
   }
 
   return em.findById('mangayomi')!;
