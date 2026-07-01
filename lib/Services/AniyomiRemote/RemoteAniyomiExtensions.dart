@@ -98,10 +98,10 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
     try {
       final result = await RemoteSidecarBridge().invokeBridgeAction(
         'listInstalled',
-        {'type': type.name},
+        {'type': type.name, 'runtime': 'aniyomi'},
       );
       final extensions = result['extensions'] as List? ?? [];
-      // Filter to only Aniyomi extensions — the server returns all runtimes.
+      // Double-filter client-side as safety net (server should already filter).
       final aniyomiExtensions = extensions.where((e) {
         final map = e as Map<String, dynamic>;
         final mid = map['managerId'] ?? map['runtime'];
@@ -138,14 +138,11 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
     try {
       final result = await RemoteSidecarBridge().invokeBridgeAction(
         'listAvailable',
-        {'type': type.name},
+        {'type': type.name, 'runtime': 'aniyomi'},
       );
       final extensions = result['extensions'] as List? ?? [];
 
-      // Filter to ONLY Aniyomi extensions — the server's listAvailable
-      // returns all runtimes mixed together (aniyomi + cloudstream + kotatsu).
-      // Without this filter, CloudStream/Kotatsu extensions would appear
-      // under the Aniyomi tab and install would fail (wrong extId/repoUrl).
+      // Double-filter client-side as safety net (server should already filter).
       final aniyomiExtensions = extensions.where((e) {
         final map = e as Map<String, dynamic>;
         final mid = map['managerId'] ?? map['runtime'];

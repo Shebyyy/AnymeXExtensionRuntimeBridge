@@ -84,10 +84,10 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
     try {
       final result = await RemoteSidecarBridge().invokeBridgeAction(
         'listInstalled',
-        {'type': type.name},
+        {'type': type.name, 'runtime': 'cloudstream'},
       );
       final extensions = result['extensions'] as List? ?? [];
-      // Filter to only CloudStream extensions — the server returns all runtimes.
+      // Double-filter client-side as safety net (server should already filter).
       final csExtensions = extensions.where((e) {
         final map = e as Map<String, dynamic>;
         final mid = map['managerId'] ?? map['runtime'];
@@ -140,11 +140,11 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
     try {
       final result = await RemoteSidecarBridge().invokeBridgeAction(
         'listAvailable',
-        {'type': type.name},
+        {'type': type.name, 'runtime': 'cloudstream'},
       );
       final extensions = result['extensions'] as List? ?? [];
 
-      // Only include CloudStream extensions (managerId == 'cloudstream').
+      // Double-filter client-side as safety net (server should already filter).
       final csExtensions = extensions.where((e) {
         final map = e as Map<String, dynamic>;
         final mid = map['managerId'] ?? map['runtime'];

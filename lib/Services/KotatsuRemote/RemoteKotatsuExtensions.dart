@@ -83,10 +83,10 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
     try {
       final result = await RemoteSidecarBridge().invokeBridgeAction(
         'listInstalled',
-        {'type': type.name},
+        {'type': type.name, 'runtime': 'kotatsu'},
       );
       final extensions = result['extensions'] as List? ?? [];
-      // Filter to only Kotatsu extensions — the server returns all runtimes.
+      // Double-filter client-side as safety net (server should already filter).
       final kotatsuExts = extensions.where((e) {
         final map = e as Map<String, dynamic>;
         final mid = map['managerId'] ?? map['runtime'];
@@ -125,11 +125,11 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
     try {
       final result = await RemoteSidecarBridge().invokeBridgeAction(
         'listAvailable',
-        {'type': type.name},
+        {'type': type.name, 'runtime': 'kotatsu'},
       );
       final extensions = result['extensions'] as List? ?? [];
 
-      // Only include Kotatsu extensions.
+      // Double-filter client-side as safety net (server should already filter).
       final kotatsuExtensions = extensions.where((e) {
         final map = e as Map<String, dynamic>;
         final mid = map['managerId'] ?? map['runtime'];
