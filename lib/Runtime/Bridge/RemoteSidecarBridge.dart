@@ -226,7 +226,9 @@ class RemoteSidecarBridge {
     final parameters = args['parameters'] as Map?;
     final token = parameters?['token'] as String?;
     final id = token ?? (_requestId++).toString();
-    final extId = args['extId'] as String? ?? args['extensionId'] as String?;
+    final extId = args['extId'] as String?
+        ?? args['extensionId'] as String?
+        ?? args['sourceId'] as String?;
 
     final completer = Completer<dynamic>();
     _completers[id] = completer;
@@ -265,7 +267,9 @@ class RemoteSidecarBridge {
     final parameters = args['parameters'] as Map?;
     final token = parameters?['token'] as String?;
     final id = token ?? (_requestId++).toString();
-    final extId = args['extId'] as String? ?? args['extensionId'] as String?;
+    final extId = args['extId'] as String?
+        ?? args['extensionId'] as String?
+        ?? args['sourceId'] as String?;
 
     final controller = StreamController<dynamic>();
     _streamControllers[id] = controller;
