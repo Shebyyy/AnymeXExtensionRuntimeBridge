@@ -7,7 +7,6 @@ import '../../Logger.dart';
 import '../../Models/Source.dart';
 import '../../Extensions/Extensions.dart';
 import '../../Extensions/SourceMethods.dart';
-import '../../Runtime/Bridge/BridgeDispatcher.dart';
 import '../../Runtime/Bridge/RemoteSidecarBridge.dart';
 import '../../Runtime/RuntimeController.dart';
 import '../Aniyomi/Models/Source.dart';
@@ -17,15 +16,15 @@ import '../AniyomiDesktop/DesktopAniyomiSourceMethods.dart';
 /// iOS variant of [DesktopAniyomiExtensions].
 ///
 /// Routes Aniyomi extension calls through the remote AnymeX Bridge server
-/// over SSH (via [RemoteSidecarBridge] + [BridgeDispatcher] in `remote` mode).
+/// over SSH (via [RemoteSidecarBridge]).
 ///
-/// Differences from [DesktopAniyomiExtensions]:
-///   - Does NOT require a local JRE or local `bridge.jar` — the remote
-///     server runs the JAR.
-///   - Does NOT call `BridgeDispatcher().initialize(jarPath)` — the remote
-///     bridge is configured separately at app startup.
+/// KEY DIFFERENCES from [DesktopAniyomiExtensions]:
 ///   - Repo/install management is forwarded to the remote server (which
 ///     maintains per-user state via SSH key fingerprint).
+///   - fetchInstalled* / fetchAvailable* use the server's `listInstalled` /
+///     `listAvailable` actions instead of the Desktop base class methods
+///     (which read from local KvStore and local JAR — both empty on iOS).
+///   - getReposRx fetches from the server's `listRepos` action.
 class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
   @override
   String get id => 'aniyomi-remote';
@@ -76,22 +75,159 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
     }
   }
 
-  // fetchInstalledAnimeExtensions / fetchInstalledMangaExtensions are
-  // inherited from DesktopAniyomiExtensions — they call
-  // BridgeDispatcher().invokeMethod('loadExtensions', {folderPath: ...}).
-  //
-  // On the remote server, the `folderPath` is irrelevant — the server
-  // manages its own per-user extension folder. The server's `invoke`
-  // action handler ignores `folderPath` and just returns the user's
-  // currently-loaded source list. So the inherited methods "just work".
+  // ----------------------------------------------------------------
+  // fetchInstalled* — use server's listInstalled action
+  // ----------------------------------------------------------------
+
+  @override
+  Future<void> fetchInstalledAnimeExtensions() async {
+    getInstalledRx(ItemType.anime).value =
+        await _loadInstalledFromServer(ItemType.anime);
+  }
+
+  @override
+  Future<void> fetchInstalledMangaExtensions() async {
+    getInstalledRx(ItemType.manga).value =
+        await _loadInstalledFromServer(ItemType.manga);
+  }
+
+  @override
+  Future<void> fetchInstalledNovelExtensions() async {}
+
+  Future<List<Source>> _loadInstalledFromServer(ItemType type) async {
+    try {
+      final result = await RemoteSidecarBridge().invokeBridgeAction(
+        'listInstalled',
+        {'type': type.name},
+      );
+      final extensions = result['extensions'] as List? ?? [];
+      return _parseAniyomiExtensions(extensions, type);
+    } catch (e) {
+      Logger.log('RemoteAniyomiExtensions._loadInstalledFromServer: $e');
+      return [];
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // fetchAvailable* — use server's listAvailable action
+  // ----------------------------------------------------------------
+
+  @override
+  Future<void> fetchAnimeExtensions() async {
+    getAvailableRx(ItemType.anime).value =
+        await _loadAvailableFromServer(ItemType.anime);
+  }
+
+  @override
+  Future<void> fetchMangaExtensions() async {
+    getAvailableRx(ItemType.manga).value =
+        await _loadAvailableFromServer(ItemType.manga);
+  }
+
+  @override
+  Future<void> fetchNovelExtensions() async {}
+
+  Future<List<Source>> _loadAvailableFromServer(ItemType type) async {
+    try {
+      final result = await RemoteSidecarBridge().invokeBridgeAction(
+        'listAvailable',
+        {'type': type.name},
+      );
+      final extensions = result['extensions'] as List? ?? [];
+
+      // Filter out already-installed extensions.
+      final installedIds =
+          getInstalledRx(type).value.map((e) => e.id).toSet();
+
+      return _parseAniyomiExtensions(
+        extensions.where((e) {
+          final map = e as Map<String, dynamic>;
+          // The server sends `installed: bool` — use that, but also
+          // double-check against our local installed list.
+          return map['installed'] != true &&
+              !installedIds.contains(map['id']?.toString());
+        }).toList(),
+        type,
+      );
+    } catch (e) {
+      Logger.log('RemoteAniyomiExtensions._loadAvailableFromServer: $e');
+      return [];
+    }
+  }
+
+  /// Parse server response extensions into ASource objects.
+  ///
+  /// The server's `listAvailable` and `listInstalled` both return extension
+  /// objects with fields like: id, name, fullName, pkg, file, version, type,
+  /// itemType, managerId, runtime, lang, isNsfw, baseUrl, fileUrl, iconUrl,
+  /// repoUrl, installed.
+  ///
+  /// The `listInstalled` response wraps metadata inside a `meta` sub-object
+  /// plus top-level fields like extId, repoUrl, runtime, itemType.
+  List<Source> _parseAniyomiExtensions(List extensions, ItemType type) {
+    final parsed = <ASource>[];
+
+    for (final e in extensions) {
+      final map = e as Map<String, dynamic>;
+
+      // listInstalled puts metadata in `meta`, listAvailable puts it flat.
+      final meta = map['meta'] as Map<String, dynamic>? ?? map;
+
+      final detectedType = _itemTypeFromServer(meta) ?? type;
+      if (detectedType != type) continue;
+
+      final source = ASource(
+        id: (map['extId'] ?? meta['id'])?.toString(),
+        name: meta['name'] as String?,
+        lang: meta['lang'] as String?,
+        pkgName: meta['pkg'] as String?,
+        version: meta['version'] as String?,
+        isNsfw: meta['isNsfw'] as bool? ?? false,
+        baseUrl: meta['baseUrl'] as String?,
+        itemType: detectedType,
+        iconUrl: meta['iconUrl'] as String?,
+        repo: (map['repoUrl'] ?? meta['repoUrl']) as String?,
+      );
+      source.managerId = id;
+
+      // For available extensions, store the file URL so we can construct
+      // the APK URL later if needed (the server handles actual download).
+      if (meta['file'] != null) {
+        source.apkName = meta['file'] as String?;
+      }
+
+      parsed.add(source);
+    }
+
+    return parsed;
+  }
+
+  /// Convert server itemType int/string to ItemType enum.
+  ItemType? _itemTypeFromServer(Map<String, dynamic> meta) {
+    final itemTypeVal = meta['itemType'];
+    if (itemTypeVal is int && itemTypeVal >= 0 && itemTypeVal <= 2) {
+      return ItemType.values[itemTypeVal];
+    }
+    final typeStr = meta['type'] as String?;
+    if (typeStr == 'anime') return ItemType.anime;
+    if (typeStr == 'manga') return ItemType.manga;
+    if (typeStr == 'novel') return ItemType.novel;
+    return null;
+  }
+
+  // ----------------------------------------------------------------
+  // Repo management — forwarded to server
+  // ----------------------------------------------------------------
 
   @override
   Future<void> addRepo(String repoUrl, ItemType type) async {
     try {
       await RemoteSidecarBridge().invokeBridgeAction('addRepo', {
         'repoUrl': repoUrl,
-        'itemType': type.name,
       });
+      // Refresh available list after adding a repo.
+      await fetchAnimeExtensions();
+      await fetchMangaExtensions();
     } catch (e) {
       Logger.log('RemoteAniyomiExtensions.addRepo: $e');
       rethrow;
@@ -103,8 +239,9 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
     try {
       await RemoteSidecarBridge().invokeBridgeAction('removeRepo', {
         'repoUrl': repoUrl,
-        'itemType': type.name,
       });
+      await fetchAnimeExtensions();
+      await fetchMangaExtensions();
     } catch (e) {
       Logger.log('RemoteAniyomiExtensions.removeRepo: $e');
       rethrow;
@@ -112,16 +249,48 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
   }
 
   @override
+  Rx<List<Repo>> getReposRx(ItemType type) {
+    // Fetch repos from server asynchronously and return current value.
+    // The Rx will be updated when fetchAnimeExtensions refreshes.
+    _refreshReposFromServer(type);
+    return super.getReposRx(type);
+  }
+
+  Future<void> _refreshReposFromServer(ItemType type) async {
+    try {
+      final result =
+          await RemoteSidecarBridge().invokeBridgeAction('listRepos', {});
+      final repos = (result['repos'] as List? ?? [])
+          .map((r) => Repo(
+                url: (r as Map<String, dynamic>)['repoUrl'] as String? ?? '',
+                managerId: id,
+              ))
+          .toList();
+      // Filter repos to only include Aniyomi-type repos — we can't easily
+      // tell from the server which are Aniyomi vs CS vs Kotatsu, so we
+      // include all and let the available list filter by type.
+      super.getReposRx(type).value = repos;
+    } catch (e) {
+      Logger.log('RemoteAniyomiExtensions._refreshReposFromServer: $e');
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // Install / Uninstall / Update — forwarded to server
+  // ----------------------------------------------------------------
+
+  @override
   Future<void> installSource(Source source, {String? customPath}) async {
     try {
       await RemoteSidecarBridge().invokeBridgeAction('install', {
         'extId': source.id,
         'repoUrl': source.repo ?? '',
-        if (customPath != null) 'customPath': customPath,
       });
-      // Refresh installed list after install.
+      // Refresh both lists after install.
       await fetchInstalledAnimeExtensions();
       await fetchInstalledMangaExtensions();
+      await fetchAnimeExtensions();
+      await fetchMangaExtensions();
     } catch (e) {
       Logger.log('RemoteAniyomiExtensions.installSource: $e');
       rethrow;
@@ -136,6 +305,8 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
       });
       await fetchInstalledAnimeExtensions();
       await fetchInstalledMangaExtensions();
+      await fetchAnimeExtensions();
+      await fetchMangaExtensions();
     } catch (e) {
       Logger.log('RemoteAniyomiExtensions.uninstallSource: $e');
       rethrow;
@@ -158,13 +329,4 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
 /// are inherited unchanged from [DesktopAniyomiSourceMethods].
 class RemoteAniyomiSourceMethods extends DesktopAniyomiSourceMethods {
   RemoteAniyomiSourceMethods(Source source) : super(source);
-
-  // No overrides needed — the desktop class already routes everything
-  // through BridgeDispatcher().invokeMethod(), which will use the `remote`
-  // mode once ExtensionManager.setBridgeType(BridgeType.remote) is called.
-
-  // The only reason this class exists is so RemoteAniyomiExtensions can
-  // return a typed instance from createSourceMethods(), and so that
-  // future iOS-specific tweaks (e.g. different timeout for slow mobile
-  // networks) have a clear home.
 }

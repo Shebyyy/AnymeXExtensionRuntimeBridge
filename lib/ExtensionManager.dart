@@ -484,21 +484,25 @@ extension SourceExecution on Source {
 Extension getSourceManager(Source source) {
   final em = Get.find<ExtensionManager>();
 
+  // Lookup order: platform-specific first, then fallbacks.
+  // On iOS only remote IDs are registered. On desktop only desktop IDs.
+  // On Android only the base IDs. The cascade ensures each platform
+  // finds its own manager without null crashes.
   if (source is ASource) {
-    return em.findById('aniyomi') ??
-        em.findById('aniyomi-remote') ??
+    return em.findById('aniyomi-remote') ??
+        em.findById('aniyomi') ??
         em.findById('aniyomi-desktop')!;
   }
   if (source is MSource) return em.findById('mangayomi')!;
   if (source is SSource) return em.findById('sora')!;
   if (source is CloudStreamSource) {
-    return em.findById('cloudstream') ??
-        em.findById('cloudstream-remote') ??
+    return em.findById('cloudstream-remote') ??
+        em.findById('cloudstream') ??
         em.findById('cloudstream-desktop')!;
   }
   if (source is KotatsuSource) {
-    return em.findById('kotatsu') ??
-        em.findById('kotatsu-remote') ??
+    return em.findById('kotatsu-remote') ??
+        em.findById('kotatsu') ??
         em.findById('kotatsu-desktop')!;
   }
 
