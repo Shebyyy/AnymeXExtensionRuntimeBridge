@@ -87,7 +87,14 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
         {'type': type.name},
       );
       final extensions = result['extensions'] as List? ?? [];
-      return _parseCloudStreamExtensions(extensions, type);
+      // Filter to only CloudStream extensions — the server returns all runtimes.
+      final csExtensions = extensions.where((e) {
+        final map = e as Map<String, dynamic>;
+        final mid = map['managerId'] ?? map['runtime'];
+        final metaMid = (map['meta'] as Map?)?['managerId'] ?? (map['meta'] as Map?)?['runtime'];
+        return mid == 'cloudstream' || metaMid == 'cloudstream';
+      }).toList();
+      return _parseCloudStreamExtensions(csExtensions, type);
     } catch (e) {
       Logger.log('RemoteCloudStreamExtensions._loadInstalledFromServer: $e');
       return [];

@@ -86,7 +86,14 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
         {'type': type.name},
       );
       final extensions = result['extensions'] as List? ?? [];
-      return _parseKotatsuExtensions(extensions, type);
+      // Filter to only Kotatsu extensions — the server returns all runtimes.
+      final kotatsuExts = extensions.where((e) {
+        final map = e as Map<String, dynamic>;
+        final mid = map['managerId'] ?? map['runtime'];
+        final metaMid = (map['meta'] as Map?)?['managerId'] ?? (map['meta'] as Map?)?['runtime'];
+        return mid == 'kotatsu' || metaMid == 'kotatsu';
+      }).toList();
+      return _parseKotatsuExtensions(kotatsuExts, type);
     } catch (e) {
       Logger.log('RemoteKotatsuExtensions._loadInstalledFromServer: $e');
       return [];

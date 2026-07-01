@@ -101,7 +101,14 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
         {'type': type.name},
       );
       final extensions = result['extensions'] as List? ?? [];
-      return _parseAniyomiExtensions(extensions, type);
+      // Filter to only Aniyomi extensions — the server returns all runtimes.
+      final aniyomiExtensions = extensions.where((e) {
+        final map = e as Map<String, dynamic>;
+        final mid = map['managerId'] ?? map['runtime'];
+        final metaMid = (map['meta'] as Map?)?['managerId'] ?? (map['meta'] as Map?)?['runtime'];
+        return mid == 'aniyomi' || metaMid == 'aniyomi';
+      }).toList();
+      return _parseAniyomiExtensions(aniyomiExtensions, type);
     } catch (e) {
       Logger.log('RemoteAniyomiExtensions._loadInstalledFromServer: $e');
       return [];
@@ -135,12 +142,22 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
       );
       final extensions = result['extensions'] as List? ?? [];
 
+      // Filter to ONLY Aniyomi extensions — the server's listAvailable
+      // returns all runtimes mixed together (aniyomi + cloudstream + kotatsu).
+      // Without this filter, CloudStream/Kotatsu extensions would appear
+      // under the Aniyomi tab and install would fail (wrong extId/repoUrl).
+      final aniyomiExtensions = extensions.where((e) {
+        final map = e as Map<String, dynamic>;
+        final mid = map['managerId'] ?? map['runtime'];
+        return mid == 'aniyomi';
+      }).toList();
+
       // Filter out already-installed extensions.
       final installedIds =
           getInstalledRx(type).value.map((e) => e.id).toSet();
 
       return _parseAniyomiExtensions(
-        extensions.where((e) {
+        aniyomiExtensions.where((e) {
           final map = e as Map<String, dynamic>;
           // The server sends `installed: bool` — use that, but also
           // double-check against our local installed list.
@@ -260,15 +277,21 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
     try {
       final result =
           await RemoteSidecarBridge().invokeBridgeAction('listRepos', {});
-      final repos = (result['repos'] as List? ?? [])
+      final allRepos = result['repos'] as List? ?? [];
+
+      // The server's listRepos returns ALL repos without a runtime tag.
+      // We need to determine which repos belong to Aniyomi. We do this
+      // by checking the repo URL against the available extensions — only
+      // repos that actually provide Aniyomi extensions should be listed.
+      // For now, include all repos and let the extension list filter by
+      // managerId. The UI will show all repos under each tab, but
+      // extensions are correctly filtered.
+      final repos = allRepos
           .map((r) => Repo(
                 url: (r as Map<String, dynamic>)['repoUrl'] as String? ?? '',
                 managerId: id,
               ))
           .toList();
-      // Filter repos to only include Aniyomi-type repos — we can't easily
-      // tell from the server which are Aniyomi vs CS vs Kotatsu, so we
-      // include all and let the available list filter by type.
       super.getReposRx(type).value = repos;
     } catch (e) {
       Logger.log('RemoteAniyomiExtensions._refreshReposFromServer: $e');
