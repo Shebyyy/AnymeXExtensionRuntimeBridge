@@ -211,7 +211,7 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
   Future<void> addRepo(String repoUrl, ItemType type) async {
     try {
       await RemoteSidecarBridge()
-          .invokeBridgeAction('addRepo', {'repoUrl': repoUrl});
+          .invokeBridgeAction('addRepo', {'repoUrl': repoUrl, 'runtime': 'cloudstream'});
       await fetchAnimeExtensions();
     } catch (e) {
       Logger.log('RemoteCloudStreamExtensions.addRepo: $e');
@@ -223,7 +223,7 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
   Future<void> removeRepo(String repoUrl, ItemType type) async {
     try {
       await RemoteSidecarBridge()
-          .invokeBridgeAction('removeRepo', {'repoUrl': repoUrl});
+          .invokeBridgeAction('removeRepo', {'repoUrl': repoUrl, 'runtime': 'cloudstream'});
       await fetchAnimeExtensions();
     } catch (e) {
       Logger.log('RemoteCloudStreamExtensions.removeRepo: $e');
@@ -240,7 +240,9 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
   Future<void> _refreshReposFromServer(ItemType type) async {
     try {
       final result =
-          await RemoteSidecarBridge().invokeBridgeAction('listRepos', {});
+          await RemoteSidecarBridge().invokeBridgeAction('listRepos', {
+        'runtime': 'cloudstream',
+      });
       final repos = (result['repos'] as List? ?? [])
           .map((r) => Repo(
                 url: (r as Map<String, dynamic>)['repoUrl'] as String? ?? '',

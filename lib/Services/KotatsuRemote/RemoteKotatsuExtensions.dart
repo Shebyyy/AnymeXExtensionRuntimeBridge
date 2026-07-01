@@ -179,7 +179,7 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
   Future<void> addRepo(String repoUrl, ItemType type) async {
     try {
       await RemoteSidecarBridge()
-          .invokeBridgeAction('addRepo', {'repoUrl': repoUrl});
+          .invokeBridgeAction('addRepo', {'repoUrl': repoUrl, 'runtime': 'kotatsu'});
       await fetchInstalledMangaExtensions();
       await fetchMangaExtensions();
     } catch (e) {
@@ -192,7 +192,7 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
   Future<void> removeRepo(String repoUrl, ItemType type) async {
     try {
       await RemoteSidecarBridge()
-          .invokeBridgeAction('removeRepo', {'repoUrl': repoUrl});
+          .invokeBridgeAction('removeRepo', {'repoUrl': repoUrl, 'runtime': 'kotatsu'});
       await fetchInstalledMangaExtensions();
       await fetchMangaExtensions();
     } catch (e) {
@@ -210,7 +210,9 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
   Future<void> _refreshReposFromServer(ItemType type) async {
     try {
       final result =
-          await RemoteSidecarBridge().invokeBridgeAction('listRepos', {});
+          await RemoteSidecarBridge().invokeBridgeAction('listRepos', {
+        'runtime': 'kotatsu',
+      });
       final repos = (result['repos'] as List? ?? [])
           .map((r) => Repo(
                 url: (r as Map<String, dynamic>)['repoUrl'] as String? ?? '',

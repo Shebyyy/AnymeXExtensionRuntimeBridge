@@ -238,6 +238,7 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
     try {
       await RemoteSidecarBridge().invokeBridgeAction('addRepo', {
         'repoUrl': repoUrl,
+        'runtime': 'aniyomi',
       });
       // Refresh available list after adding a repo.
       await fetchAnimeExtensions();
@@ -253,6 +254,7 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
     try {
       await RemoteSidecarBridge().invokeBridgeAction('removeRepo', {
         'repoUrl': repoUrl,
+        'runtime': 'aniyomi',
       });
       await fetchAnimeExtensions();
       await fetchMangaExtensions();
@@ -273,17 +275,10 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
   Future<void> _refreshReposFromServer(ItemType type) async {
     try {
       final result =
-          await RemoteSidecarBridge().invokeBridgeAction('listRepos', {});
-      final allRepos = result['repos'] as List? ?? [];
-
-      // The server's listRepos returns ALL repos without a runtime tag.
-      // We need to determine which repos belong to Aniyomi. We do this
-      // by checking the repo URL against the available extensions — only
-      // repos that actually provide Aniyomi extensions should be listed.
-      // For now, include all repos and let the extension list filter by
-      // managerId. The UI will show all repos under each tab, but
-      // extensions are correctly filtered.
-      final repos = allRepos
+          await RemoteSidecarBridge().invokeBridgeAction('listRepos', {
+        'runtime': 'aniyomi',
+      });
+      final repos = (result['repos'] as List? ?? [])
           .map((r) => Repo(
                 url: (r as Map<String, dynamic>)['repoUrl'] as String? ?? '',
                 managerId: id,
