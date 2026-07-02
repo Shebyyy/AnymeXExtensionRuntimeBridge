@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'AnymeXBridge.dart';
 import 'ExtensionManager.dart';
 import 'Logger.dart';
+import 'Runtime/Bridge/BridgeDispatcher.dart';
 import 'Services/LnReader/JsEngine/JsEngine.dart';
 import 'Settings/KvStore.dart';
 
@@ -178,6 +179,11 @@ class AnymeXExtensionBridge {
     if (_initialized) {
       _initialized = false;
       JsExtensionEngine.instance.dispose();
+      try {
+        BridgeDispatcher().dispose();
+      } catch (e) {
+        debugPrint('AnymeXExtensionBridge: Error disposing BridgeDispatcher: $e');
+      }
     }
   }
 }
