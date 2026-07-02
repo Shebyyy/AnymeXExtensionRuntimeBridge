@@ -179,7 +179,10 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
   Future<void> addRepo(String repoUrl, ItemType type) async {
     try {
       await RemoteSidecarBridge()
-          .invokeBridgeAction('addRepo', {'repoUrl': repoUrl, 'runtime': 'kotatsu'});
+          .invokeBridgeAction('addRepo', {
+        'repoUrl': repoUrl,
+        'runtime': 'kotatsu',
+      });
       await fetchInstalledMangaExtensions();
       await fetchMangaExtensions();
     } catch (e) {
@@ -192,7 +195,10 @@ class RemoteKotatsuExtensions extends DesktopKotatsuExtensions {
   Future<void> removeRepo(String repoUrl, ItemType type) async {
     try {
       await RemoteSidecarBridge()
-          .invokeBridgeAction('removeRepo', {'repoUrl': repoUrl, 'runtime': 'kotatsu'});
+          .invokeBridgeAction('removeRepo', {
+        'repoUrl': repoUrl,
+        'runtime': 'kotatsu',
+      });
       await fetchInstalledMangaExtensions();
       await fetchMangaExtensions();
     } catch (e) {

@@ -211,7 +211,10 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
   Future<void> addRepo(String repoUrl, ItemType type) async {
     try {
       await RemoteSidecarBridge()
-          .invokeBridgeAction('addRepo', {'repoUrl': repoUrl, 'runtime': 'cloudstream'});
+          .invokeBridgeAction('addRepo', {
+        'repoUrl': repoUrl,
+        'runtime': 'cloudstream',
+      });
       await fetchAnimeExtensions();
     } catch (e) {
       Logger.log('RemoteCloudStreamExtensions.addRepo: $e');
@@ -223,7 +226,10 @@ class RemoteCloudStreamExtensions extends DesktopCloudStreamExtensions {
   Future<void> removeRepo(String repoUrl, ItemType type) async {
     try {
       await RemoteSidecarBridge()
-          .invokeBridgeAction('removeRepo', {'repoUrl': repoUrl, 'runtime': 'cloudstream'});
+          .invokeBridgeAction('removeRepo', {
+        'repoUrl': repoUrl,
+        'runtime': 'cloudstream',
+      });
       await fetchAnimeExtensions();
     } catch (e) {
       Logger.log('RemoteCloudStreamExtensions.removeRepo: $e');

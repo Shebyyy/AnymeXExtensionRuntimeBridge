@@ -149,12 +149,27 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
         return mid == 'aniyomi';
       }).toList();
 
+      // Also filter by type on client side — extra safety net.
+      final typeFiltered = aniyomiExtensions.where((e) {
+        final map = e as Map<String, dynamic>;
+        final meta = map['meta'] as Map<String, dynamic>? ?? map;
+        final extType = meta['type'] as String?;
+        final extItemType = meta['itemType'] as int?;
+        if (extType == type.name) return true;
+        if (extItemType != null) {
+          // 0=manga, 1=anime, 2=novel
+          final expectedInt = type == ItemType.anime ? 1 : type == ItemType.manga ? 0 : 2;
+          return extItemType == expectedInt;
+        }
+        return false;
+      }).toList();
+
       // Filter out already-installed extensions.
       final installedIds =
           getInstalledRx(type).value.map((e) => e.id).toSet();
 
       return _parseAniyomiExtensions(
-        aniyomiExtensions.where((e) {
+        typeFiltered.where((e) {
           final map = e as Map<String, dynamic>;
           // The server sends `installed: bool` — use that, but also
           // double-check against our local installed list.
@@ -278,7 +293,9 @@ class RemoteAniyomiExtensions extends DesktopAniyomiExtensions {
           await RemoteSidecarBridge().invokeBridgeAction('listRepos', {
         'runtime': 'aniyomi',
       });
-      final repos = (result['repos'] as List? ?? [])
+      final allRepos = result['repos'] as List? ?? [];
+
+      final repos = allRepos
           .map((r) => Repo(
                 url: (r as Map<String, dynamic>)['repoUrl'] as String? ?? '',
                 managerId: id,
