@@ -87,10 +87,16 @@ class CloudStreamExtensions extends Extension {
       if (dir == null) return;
 
       if (await dir.exists()) {
-        final files = dir
-            .listSync()
-            .whereType<File>()
-            .where((f) => f.path.endsWith('.cs3'));
+        final allFiles = dir.listSync().whereType<File>();
+        for (final file in allFiles) {
+          if (file.path.contains('.old_')) {
+            try {
+              await file.delete();
+            } catch (_) {}
+          }
+        }
+
+        final files = allFiles.where((f) => f.path.endsWith('.cs3'));
         for (final file in files) {
           try {
             await platform.invokeMethod('loadPlugin', {'path': file.path});
@@ -212,7 +218,34 @@ class CloudStreamExtensions extends Extension {
 
         final filename = '${source.internalName ?? source.name}.cs3';
         final file = File(p.join(dir.path, filename));
-        await file.writeAsBytes(response.bodyBytes);
+
+        final tempFile = File(p.join(dir.path, '$filename.tmp'));
+        if (await tempFile.exists()) {
+          try {
+            await tempFile.delete();
+          } catch (_) {}
+        }
+        await tempFile.writeAsBytes(response.bodyBytes);
+
+        if (await file.exists()) {
+          try {
+            await file.delete();
+          } catch (e) {
+            Logger.log("Failed to delete existing plugin file, attempting rename workaround: $e");
+            try {
+              final trashFile = File(p.join(dir.path, '$filename.old_${DateTime.now().millisecondsSinceEpoch}'));
+              await file.rename(trashFile.path);
+            } catch (renameError) {
+              Logger.log("Failed to rename locked plugin file: $renameError");
+            }
+          }
+        }
+
+        try {
+          await tempFile.rename(file.path);
+        } catch (_) {
+          await file.writeAsBytes(response.bodyBytes);
+        }
 
         Logger.log("Saved CloudStream plugin to ${file.path}");
 
