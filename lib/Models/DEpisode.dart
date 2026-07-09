@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:developer';
-
 class DEpisode {
   String? url;
   String? name;
@@ -48,6 +45,11 @@ class DEpisode {
       description: json['description'],
       filler: json['filler'],
       episodeNumber: episodeStr,
+      sortMap: json['sortMap'] != null
+          ? Map<String, String>.from(json['sortMap'])
+          : {
+              "season": json['season']?.toString() ?? '',
+            },
     );
   }
 
@@ -80,6 +82,7 @@ class DEpisode {
         'description': description,
         'filler': filler,
         'episodeNumber': episodeNumber,
+        if (sortMap != null) 'sortMap': sortMap,
       };
 
   static int compareByEpisodeNumber(DEpisode a, DEpisode b) {
