@@ -301,11 +301,22 @@ object RuntimeBridge {
                 "genre" to details.getGenres(),
                 "status" to details.status,
                 "episodes" to eps.map {
+                    var epNum = it.episode_number
+                    var seasonNum: Int? = null
+                    
+                    val parsed = parseEpisodeInfoFromName(it.name)
+                    seasonNum = parsed.second
+
+                    if (epNum == -1f || epNum < 0f) {
+                        epNum = parsed.first
+                    }
+                    
                     mapOf(
                         "name" to it.name,
                         "url" to it.url,
                         "date_upload" to it.date_upload,
-                        "episode_number" to it.episode_number,
+                        "episode_number" to epNum,
+                        "season" to seasonNum,
                         "scanlator" to it.scanlator
                     )
                 }
@@ -812,4 +823,23 @@ object RuntimeBridge {
         "internalData" to it.internalData,
         "initialized" to it.initialized
     )
+
+    private fun parseEpisodeInfoFromName(name: String): Pair<Float, Int?> {
+        val seasonRegex = Regex("""(?i)\b(?:s|season)\s*(\d+)""")
+        val seasonMatch = seasonRegex.find(name)
+        val season = seasonMatch?.groupValues?.get(1)?.toIntOrNull()
+
+        val cleanName = if (seasonMatch != null) name.replace(seasonMatch.value, "") else name
+
+        val prefixRegex = Regex("""(?i)(?:chapter|ch\.|ch|ep\.|ep|episode|e)\s*(\d+(\.\d+)?)""")
+        val prefixMatch = prefixRegex.find(cleanName)
+        if (prefixMatch != null) {
+            val epVal = prefixMatch.groupValues[1].toFloatOrNull() ?: -1f
+            return Pair(epVal, season)
+        }
+
+        val fallbackRegex = Regex("""(\d+(\.\d+)?)""")
+        val epVal = fallbackRegex.find(cleanName)?.groupValues?.get(1)?.toFloatOrNull() ?: -1f
+        return Pair(epVal, season)
+    }
 }

@@ -60,21 +60,35 @@ object AniyomiSourceMethods {
         "initialized" to safe({ initialized }, false)
     )
 
-    private fun parseNumberFromName(name: String): Float {
-        val prefixRegex = Regex("""(?i)(?:chapter|ch\.|ep\.|episode)\s*(\d+(\.\d+)?)""")
-        val prefixMatch = prefixRegex.find(name)
-        if (prefixMatch != null) return prefixMatch.groupValues[1].toFloatOrNull() ?: -1f
-        
+    private fun parseEpisodeInfoFromName(name: String): Pair<Float, Int?> {
+        val seasonRegex = Regex("""(?i)\b(?:s|season)\s*(\d+)""")
+        val seasonMatch = seasonRegex.find(name)
+        val season = seasonMatch?.groupValues?.get(1)?.toIntOrNull()
+
+        val cleanName = if (seasonMatch != null) name.replace(seasonMatch.value, "") else name
+
+        val prefixRegex = Regex("""(?i)(?:chapter|ch\.|ch|ep\.|ep|episode|e)\s*(\d+(\.\d+)?)""")
+        val prefixMatch = prefixRegex.find(cleanName)
+        if (prefixMatch != null) {
+            val epVal = prefixMatch.groupValues[1].toFloatOrNull() ?: -1f
+            return Pair(epVal, season)
+        }
+
         val fallbackRegex = Regex("""(\d+(\.\d+)?)""")
-        return fallbackRegex.find(name)?.groupValues?.get(1)?.toFloatOrNull() ?: -1f
+        val epVal = fallbackRegex.find(cleanName)?.groupValues?.get(1)?.toFloatOrNull() ?: -1f
+        return Pair(epVal, season)
     }
 
     private fun SEpisode.toDetailsMap(): Map<String, Any> {
         val currentName = safe({ name }, "")
         var epNum = safe({ episode_number }, -1f)
-        if (epNum == -1f || epNum < 0f) epNum = parseNumberFromName(currentName)
+        val parsed = parseEpisodeInfoFromName(currentName)
+        val seasonNum = parsed.second
+        if (epNum == -1f || epNum < 0f) {
+            epNum = parsed.first
+        }
         
-        return mapOf<String, Any>(
+        val map = mutableMapOf<String, Any>(
             "name" to currentName,
             "url" to safe({ url }, ""),
             "date_upload" to safe({ date_upload }, 0L),
@@ -84,14 +98,22 @@ object AniyomiSourceMethods {
             "summary" to safe({ summary }, ""),
             "preview_url" to safe({ preview_url }, "")
         )
+        if (seasonNum != null) {
+            map["season"] = seasonNum
+        }
+        return map
     }
 
     private fun SChapter.toDetailsMap(): Map<String, Any> {
         val currentName = safe({ name }, "")
         var chNum = safe({ chapter_number }, -1f)
-        if (chNum == -1f || chNum < 0f) chNum = parseNumberFromName(currentName)
+        val parsed = parseEpisodeInfoFromName(currentName)
+        val seasonNum = parsed.second
+        if (chNum == -1f || chNum < 0f) {
+            chNum = parsed.first
+        }
 
-        return mapOf<String, Any>(
+        val map = mutableMapOf<String, Any>(
             "name" to currentName,
             "url" to safe({ url }, ""),
             "date_upload" to safe({ date_upload }, 0L),
@@ -99,6 +121,10 @@ object AniyomiSourceMethods {
             "episode_number" to chNum, 
             "scanlator" to safe({ scanlator }, "")
         )
+        if (seasonNum != null) {
+            map["season"] = seasonNum
+        }
+        return map
     }
 
     suspend fun fetchPopular(className: String, page: Int, isAnimeObj: Any?): String {
