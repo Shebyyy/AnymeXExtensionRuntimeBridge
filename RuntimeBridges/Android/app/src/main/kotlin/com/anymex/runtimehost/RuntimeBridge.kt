@@ -301,15 +301,9 @@ object RuntimeBridge {
                 "genre" to details.getGenres(),
                 "status" to details.status,
                 "episodes" to eps.map {
-                    var epNum = it.episode_number
-                    var seasonNum: Int? = null
-                    
                     val parsed = parseEpisodeInfoFromName(it.name)
-                    seasonNum = parsed.second
-
-                    if (epNum == -1f || epNum < 0f) {
-                        epNum = parsed.first
-                    }
+                    val seasonNum = parsed.second
+                    val epNum = if (parsed.first >= 0f) parsed.first else it.episode_number
                     
                     mapOf(
                         "name" to it.name,

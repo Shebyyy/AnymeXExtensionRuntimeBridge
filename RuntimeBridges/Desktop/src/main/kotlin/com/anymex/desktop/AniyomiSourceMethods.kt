@@ -81,12 +81,9 @@ object AniyomiSourceMethods {
 
     private fun SEpisode.toDetailsMap(): Map<String, Any> {
         val currentName = safe({ name }, "")
-        var epNum = safe({ episode_number }, -1f)
         val parsed = parseEpisodeInfoFromName(currentName)
         val seasonNum = parsed.second
-        if (epNum == -1f || epNum < 0f) {
-            epNum = parsed.first
-        }
+        val epNum = if (parsed.first >= 0f) parsed.first else safe({ episode_number }, -1f)
         
         val map = mutableMapOf<String, Any>(
             "name" to currentName,
@@ -106,12 +103,9 @@ object AniyomiSourceMethods {
 
     private fun SChapter.toDetailsMap(): Map<String, Any> {
         val currentName = safe({ name }, "")
-        var chNum = safe({ chapter_number }, -1f)
         val parsed = parseEpisodeInfoFromName(currentName)
         val seasonNum = parsed.second
-        if (chNum == -1f || chNum < 0f) {
-            chNum = parsed.first
-        }
+        val chNum = if (parsed.first >= 0f) parsed.first else safe({ chapter_number }, -1f)
 
         val map = mutableMapOf<String, Any>(
             "name" to currentName,
