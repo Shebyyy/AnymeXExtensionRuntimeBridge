@@ -153,4 +153,16 @@ class CloudStreamSourceMethods extends SourceMethods {
   Future<bool> setPreference(SourcePreference pref, dynamic value) async {
     return false;
   }
+
+  Future<bool> openNativeSettings() async {
+    try {
+      final result = await platform.invokeMethod<bool>('openSettings', {
+        'pluginName': source.name ?? source.id ?? '',
+      });
+      return result ?? false;
+    } catch (e) {
+      debugPrint('CloudStream openNativeSettings error: $e');
+      return false;
+    }
+  }
 }

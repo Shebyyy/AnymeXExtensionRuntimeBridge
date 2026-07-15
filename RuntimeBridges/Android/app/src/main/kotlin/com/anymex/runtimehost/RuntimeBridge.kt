@@ -1,16 +1,25 @@
 package com.anymex.runtimehost
 
+import android.app.Activity
+import android.app.Application
 import android.content.Context
+import android.content.ContextWrapper
+import android.os.Bundle
 import android.util.Log
 import com.anymex.runtimehost.aniyomi.AnimeSourceMethods
 import com.anymex.runtimehost.aniyomi.AniyomiExtensionManager
 import com.anymex.runtimehost.aniyomi.AniyomiSourceMethods
 import com.anymex.runtimehost.aniyomi.MangaSourceMethods
+import com.anymex.runtimehost.network.MangaImageProxy
+import java.lang.ref.WeakReference
+import java.net.URLEncoder
+
 import com.lagradost.cloudstream3.AcraApplication
 import com.lagradost.cloudstream3.APIHolder
 import com.lagradost.cloudstream3.CloudStreamApp
 import com.lagradost.cloudstream3.plugins.PluginManager
 import com.lagradost.cloudstream3.plugins.RepositoryManager
+import com.lagradost.cloudstream3.plugins.AppCompatActivityWrapper
 import com.lagradost.cloudstream3.utils.DataStore
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.model.Track
@@ -31,11 +40,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.awaitAll
 import kotlinx.serialization.json.Json
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingletonFactory
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.security.MessageDigest
 import eu.kanade.tachiyomi.network.normalizeUrl
 
 
@@ -53,6 +64,8 @@ object RuntimeBridge {
     private val aniyomiIsAnimeRegistry = mutableMapOf<String, Boolean>() 
     private val activeRequests = mutableMapOf<String, Job>() 
 
+    private var lastKnownActivity: WeakReference<Any>? = null 
+
     data class ProviderMetadata(
         val id: String,
         val name: String,
@@ -60,7 +73,8 @@ object RuntimeBridge {
         val lang: String,
         val sourcePlugin: String?,
         val iconUrl: String?,
-        val internalName: String?
+        val internalName: String?,
+        val hasSettings: Boolean = false
     )
 
     @JvmOverloads
@@ -86,6 +100,24 @@ object RuntimeBridge {
             AcraApplication.context = context.applicationContext
             CloudStreamApp.context = context.applicationContext
 
+            (context.applicationContext as? Application)?.registerActivityLifecycleCallbacks(
+                object : Application.ActivityLifecycleCallbacks {
+                    override fun onActivityResumed(activity: Activity) {
+                        if (isSubclassOfAppCompatActivity(activity.javaClass)) {
+                            lastKnownActivity = WeakReference(activity)
+                        }
+                    }
+                    override fun onActivityCreated(a: Activity, b: Bundle?) {}
+                    override fun onActivityStarted(a: Activity) {}
+                    override fun onActivityPaused(a: Activity) {}
+                    override fun onActivityStopped(a: Activity) {}
+                    override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
+                    override fun onActivityDestroyed(a: Activity) {
+                        if (lastKnownActivity?.get() === a) lastKnownActivity = null
+                    }
+                }
+            )
+
             extensionManager = AniyomiExtensionManager(context.applicationContext)
             Injekt.addSingletonFactory<AniyomiExtensionManager> { extensionManager!! }
 
@@ -103,6 +135,12 @@ object RuntimeBridge {
         }
 
         Log.i(TAG, "Runtime Host Initialized successfully")
+        try {
+            val cacheDir = File(context.cacheDir, "manga_pages_cache")
+            if (cacheDir.exists()) {
+                cacheDir.deleteRecursively()
+            }
+        } catch (_: Exception) {}
         initialized = true
     }
 
@@ -372,9 +410,55 @@ object RuntimeBridge {
             val m = media(context, sourceId, isAnime)
             m.parameters = parameters
             
-            m.getPageList(chapter).map { page ->
-                val imageUrl = page.imageUrl ?: ""
-                mapOf("url" to imageUrl, "headers" to emptyMap<String, String>())
+            val pages = m.getPageList(chapter)
+            val httpSource = m.getHttpSource() as? HttpSource
+            
+            if (httpSource != null) {
+                val cacheDir = File(context.cacheDir, "manga_pages_cache/$sourceId")
+                cacheDir.mkdirs()
+                
+                val firstUrl = pages.firstOrNull()?.url ?: chapter.url
+                val md = MessageDigest.getInstance("MD5")
+                val hashBytes = md.digest(firstUrl.toByteArray())
+                val chapterHash = hashBytes.joinToString("") { "%02x".format(it) }
+                val chapterDir = File(cacheDir, chapterHash)
+                chapterDir.mkdirs()
+                
+                val downloadJobs = pages.mapIndexed { index, page ->
+                    async {
+                        val file = File(chapterDir, "page_$index.jpg")
+                        if (file.exists() && file.length() > 0) {
+                            file.absolutePath
+                        } else {
+                            try {
+                                if (page.imageUrl.isNullOrEmpty()) {
+                                    page.imageUrl = httpSource.getImageUrl(page)
+                                }
+                                val response = httpSource.getImage(page)
+                                if (response.isSuccessful) {
+                                    val bytes = response.body.bytes()
+                                    file.writeBytes(bytes)
+                                    file.absolutePath
+                                } else {
+                                    page.imageUrl ?: ""
+                                }
+                            } catch (e: Exception) {
+                                System.err.println("[ERROR] Page download failed for $index: ${e.message}")
+                                page.imageUrl ?: ""
+                            }
+                        }
+                    }
+                }
+                
+                val paths = downloadJobs.awaitAll()
+                pages.mapIndexed { index, page ->
+                    mapOf("url" to paths[index], "headers" to emptyMap<String, String>())
+                }
+            } else {
+                pages.map { page ->
+                    val imageUrl = page.imageUrl ?: ""
+                    mapOf("url" to imageUrl, "headers" to emptyMap<String, String>())
+                }
             }
         }
         if (token != null) activeRequests[token] = job
@@ -466,7 +550,7 @@ object RuntimeBridge {
         key: String,
         action: String?,
         value: Any?,
-    ): Boolean = runBlocking {
+    ): Boolean = runBlocking(Dispatchers.Main) {
         val isAnime = aniyomiIsAnimeRegistry[sourceId] ?: true
         val handler = sourcePreferences[sourceId]?.get(key) ?: return@runBlocking false
         val pref = handler.pref
@@ -538,6 +622,8 @@ object RuntimeBridge {
                 APIHolder.apis.forEach { provider ->
                     if (provider.sourcePlugin == path || provider.sourcePlugin?.contains(file.name) == true) {
                         val data = pluginData.firstOrNull { it.filePath == provider.sourcePlugin }
+                        val pluginInstance = PluginManager.plugins[provider.sourcePlugin]
+                        val hasSettings = (pluginInstance as? com.lagradost.cloudstream3.plugins.Plugin)?.openSettings != null
                         csPathRegistry[provider.name] = path
                         csMetadataRegistry[provider.name] = ProviderMetadata(
                             id = provider.name,
@@ -546,7 +632,8 @@ object RuntimeBridge {
                             lang = provider.lang,
                             sourcePlugin = provider.sourcePlugin,
                             iconUrl = data?.iconUrl,
-                            internalName = data?.internalName
+                            internalName = data?.internalName,
+                            hasSettings = hasSettings
                         )
                         Log.d(TAG, "Registered CloudStream Provider: ${provider.name}")
                     }
@@ -599,9 +686,53 @@ object RuntimeBridge {
                 "iconUrl" to (provider.iconUrl ?: ""),
                 "internalName" to (provider.internalName ?: provider.name),
                 "itemType" to 1,
+                "hasSettings" to provider.hasSettings,
             )
         }
     }
+
+    private fun isSubclassOfAppCompatActivity(cls: Class<*>): Boolean {
+        var c: Class<*>? = cls
+        while (c != null) {
+            if (c.name == "androidx.appcompat.app.AppCompatActivity") return true
+            c = c.superclass
+        }
+        return false
+    }
+
+    private fun resolveAppCompatActivity(context: Context): androidx.appcompat.app.AppCompatActivity? {
+        var ctx: Context? = context
+        while (ctx != null) {
+            if (isSubclassOfAppCompatActivity(ctx.javaClass)) {
+                val result = ctx as? androidx.appcompat.app.AppCompatActivity
+                if (result != null) return result
+            }
+            ctx = if (ctx is ContextWrapper) ctx.baseContext else null
+        }
+        val cached = lastKnownActivity?.get()
+        if (cached != null && isSubclassOfAppCompatActivity(cached.javaClass)) {
+            return cached as? androidx.appcompat.app.AppCompatActivity
+        }
+        return null
+    }
+
+    fun csOpenSettings(context: Context, pluginName: String): Boolean {
+        val meta = csMetadataRegistry[pluginName] ?: return false
+        val pluginInstance = PluginManager.plugins[meta.sourcePlugin]
+        val plugin = pluginInstance as? com.lagradost.cloudstream3.plugins.Plugin ?: return false
+        val openSettingsFn = plugin.openSettings ?: return false
+
+        val appCompatActivity = resolveAppCompatActivity(context)
+        if (appCompatActivity == null) {
+            Log.e(TAG, "csOpenSettings: could not find AppCompatActivity for $pluginName. " +
+                "Ensure MainActivity extends AppCompatActivity.")
+            return false
+        }
+
+        openSettingsFn(appCompatActivity)
+        return true
+    }
+
 
     @JvmStatic
     @JvmOverloads

@@ -2,6 +2,9 @@ package com.lagradost.cloudstream3.plugins
 
 import android.content.Context
 import android.util.Log
+import androidx.appcompat.app.AppCompatActivity
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.APIHolder
 import com.lagradost.cloudstream3.mvvm.logError
@@ -139,7 +142,7 @@ object PluginManager {
         }
     }
 
-    fun loadPlugin(context: Context, file: File): Boolean {
+    suspend fun loadPlugin(context: Context, file: File): Boolean {
         if (!file.exists()) {
             Log.w(PLUGIN_TAG, "Plugin file ${file.absolutePath} does not exist.")
             return false
@@ -177,7 +180,14 @@ object PluginManager {
             pluginInstance.filename = filePath
 
             if (pluginInstance is Plugin) {
-                pluginInstance.load(context)
+                val loadContext = if (context is AppCompatActivity) {
+                    context
+                } else {
+                    withContext(Dispatchers.Main) {
+                        AppCompatActivityWrapper(context)
+                    }
+                }
+                pluginInstance.load(loadContext)
             } else {
                 pluginInstance.load() // For BasePlugin
             }
@@ -234,5 +244,43 @@ object PluginManager {
         } catch (e: Exception) {
             false
         }
+    }
+}
+
+class AppCompatActivityWrapper(base: Context) : AppCompatActivity() {
+    init {
+        attachBaseContext(base)
+    }
+
+    override fun getApplicationContext(): Context {
+        return baseContext.applicationContext
+    }
+
+    override fun getResources(): android.content.res.Resources {
+        return baseContext.resources
+    }
+
+    override fun getAssets(): android.content.res.AssetManager {
+        return baseContext.assets
+    }
+
+    override fun getTheme(): android.content.res.Resources.Theme {
+        return baseContext.theme
+    }
+
+    override fun getPackageName(): String {
+        return baseContext.packageName
+    }
+
+    override fun getPackageManager(): android.content.pm.PackageManager {
+        return baseContext.packageManager
+    }
+
+    override fun getClassLoader(): ClassLoader {
+        return baseContext.classLoader
+    }
+
+    override fun getSystemService(name: String): Any {
+        return baseContext.getSystemService(name)
     }
 }

@@ -60,15 +60,23 @@ fun main(args: Array<String>) = runBlocking {
     
     val activeJobs = ConcurrentHashMap<String, Job>()
     val outLock = Any()
+    
+    val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     System.err.println("AnymeX Sidecar Process Started")
+    try {
+        val cacheDir = File(System.getProperty("user.home"), ".anymex/cache/manga_pages_cache")
+        if (cacheDir.exists()) {
+            cacheDir.deleteRecursively()
+        }
+    } catch (_: Exception) {}
     System.err.println("All stdout has been redirected to stderr for IPC safety.")
 
     while (true) {
         val line = try { reader.readLine() } catch (e: Exception) { null } ?: break
         if (line.isBlank()) continue
 
-        launch(Dispatchers.IO) {
+        bridgeScope.launch {
             try {
                 val request = gson.fromJson(line, JsonObject::class.java)
                 val method = request.get("method")?.let { if (it.isJsonPrimitive) it.asString else null } ?: return@launch
@@ -347,12 +355,12 @@ fun main(args: Array<String>) = runBlocking {
                 }
             } catch (e: CancellationException) {
 
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 System.err.println("[RPC] Error processing line: $line")
                 e.printStackTrace()
                 
                 val errorResponse = JsonObject()
-                errorResponse.addProperty("error", e.message ?: "Unknown error")
+                errorResponse.addProperty("error", e.message ?: e.toString())
                 
                 synchronized(outLock) {
                     cleanOut.println(gson.toJson(errorResponse))

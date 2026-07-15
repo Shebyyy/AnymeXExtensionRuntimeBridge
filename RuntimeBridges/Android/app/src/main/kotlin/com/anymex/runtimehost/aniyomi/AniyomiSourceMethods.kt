@@ -79,4 +79,5 @@ interface AniyomiSourceMethods {
 
 
     fun setupPreferenceScreen(screen: PreferenceScreen)
+    fun getHttpSource(): Any? = null
 }

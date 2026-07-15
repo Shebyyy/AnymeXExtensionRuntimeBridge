@@ -4,6 +4,7 @@ class CloudStreamSource extends Source {
   String? internalName;
   String? pluginUrl;
   String? jarUrl;
+  bool hasSettings;
 
   CloudStreamSource({
     super.id,
@@ -21,6 +22,7 @@ class CloudStreamSource extends Source {
     this.internalName,
     this.pluginUrl,
     this.jarUrl,
+    this.hasSettings = false,
   });
 
   factory CloudStreamSource.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,7 @@ class CloudStreamSource extends Source {
       jarUrl: json['jarUrl'] ?? json['jar'],
       internalName: json['internalName'] ?? json['name'],
       pluginUrl: json['pluginUrl'] ?? json['plugin'] ?? json['url'],
+      hasSettings: json['hasSettings'] as bool? ?? false,
     );
   }
 
