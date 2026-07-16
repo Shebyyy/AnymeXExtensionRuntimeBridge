@@ -37,13 +37,7 @@ class LegadoExtensions extends Extension {
       LegadoSourceMethods(source);
 
   // Default book source URLs
-  static const List<String> defaultSourceUrls = [
-    'https://raw.githubusercontent.com/rektpartyaftermath/Legado-booksource-collection/main/AllBooksource.json',
-    'https://github.com/ZWolken/Light-Novel-Yuedu-Source/releases/latest/download/Japan_based_bookSource.json',
-    'https://github.com/ZWolken/Light-Novel-Yuedu-Source/releases/latest/download/China_based_bookSource.json',
-    'https://github.com/ZWolken/Light-Novel-Yuedu-Source/releases/latest/download/Japanese_original_bookSource.json',
-    'https://github.com/ZWolken/Light-Novel-Yuedu-Source/releases/latest/download/All_bookSource.json',
-  ];
+static const List<String> defaultSourceUrls = [];
 
   @override
   Future<void> fetchAnimeExtensions() async {
