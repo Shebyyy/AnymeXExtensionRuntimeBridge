@@ -37,7 +37,13 @@ class LegadoExtensions extends Extension {
       LegadoSourceMethods(source);
 
   // Default book source URLs
-static const List<String> defaultSourceUrls = [];
+  static const List<String> defaultSourceUrls = [
+    'https://raw.githubusercontent.com/rektpartyaftermath/Legado-booksource-collection/main/AllBooksource.json',
+    'https://github.com/ZWolken/Light-Novel-Yuedu-Source/releases/latest/download/Japan_based_bookSource.json',
+    'https://github.com/ZWolken/Light-Novel-Yuedu-Source/releases/latest/download/China_based_bookSource.json',
+    'https://github.com/ZWolken/Light-Novel-Yuedu-Source/releases/latest/download/Japanese_original_bookSource.json',
+    'https://github.com/ZWolken/Light-Novel-Yuedu-Source/releases/latest/download/All_bookSource.json',
+  ];
 
   @override
   Future<void> fetchAnimeExtensions() async {
@@ -217,10 +223,33 @@ static const List<String> defaultSourceUrls = [];
       final repos = _loadRepos(type);
       if (repos.any((r) => r.url == repoUrl)) return;
 
+      // Fetch sources from the new repo immediately
+      final newSources = await _fetchRepo(repoUrl);
+      if (newSources.isEmpty) {
+        throw Exception("Failed to fetch repo — no sources found");
+      }
+
       final repo = Repo(url: repoUrl, managerId: id);
       final updatedRepos = List<Repo>.from(repos)..add(repo);
       _saveRepos(updatedRepos, type);
       getReposRx(type).value = updatedRepos;
+
+      // Merge new sources into the available list
+      final installed = _loadInstalled();
+      final installedIds = installed.map((e) => e.id).toSet();
+
+      final rawRx = getRawAvailableRx(type);
+      final existingRaw = rawRx.value;
+      final mergedRaw = {
+        for (final s in existingRaw) s.id: s,
+        for (final s in newSources) s.id: s,
+      }.values.toList(growable: false);
+
+      rawRx.value = List.unmodifiable(mergedRaw);
+
+      final availRx = getAvailableRx(type);
+      final mergedAvail = mergedRaw.where((s) => !installedIds.contains(s.id)).toList();
+      availRx.value = List.unmodifiable(mergedAvail);
     } catch (e) {
       Logger.log("Legado: Failed to add repo $repoUrl: $e");
       rethrow;
