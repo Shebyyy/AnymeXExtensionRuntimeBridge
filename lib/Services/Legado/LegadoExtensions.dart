@@ -57,18 +57,23 @@ class LegadoExtensions extends Extension {
 
   @override
   Future<void> fetchNovelExtensions() async {
-    final repos = _loadRepos(ItemType.novel);
+    var repos = _loadRepos(ItemType.novel);
+
+    // First run: persist default repos so they survive app restart
     if (repos.isEmpty) {
-      // Use default source URLs on first run
-      getReposRx(ItemType.novel).value =
-          defaultSourceUrls.map((url) => Repo(url: url, managerId: id)).toList();
+      repos = defaultSourceUrls
+          .map((url) => Repo(url: url, managerId: id))
+          .toList(growable: false);
+      _saveRepos(repos, ItemType.novel);
     }
 
-    final repoList = getReposRx(ItemType.novel).value;
-    if (repoList.isEmpty) return;
+    // ALWAYS set the RxList from persistence (matches Sora/Mangayomi pattern)
+    getReposRx(ItemType.novel).value = repos;
+
+    if (repos.isEmpty) return;
 
     final results = await Future.wait(
-      repoList.map((r) => _fetchRepo(r.url)),
+      repos.map((r) => _fetchRepo(r.url)),
     );
 
     final all = results.expand((e) => e).toList(growable: false);
@@ -220,36 +225,49 @@ class LegadoExtensions extends Extension {
         throw Exception("Invalid URL");
       }
 
-      final repos = _loadRepos(type);
-      if (repos.any((r) => r.url == repoUrl)) return;
+      var repos = _loadRepos(type);
 
-      // Fetch sources from the new repo immediately
-      final newSources = await _fetchRepo(repoUrl);
-      if (newSources.isEmpty) {
-        throw Exception("Failed to fetch repo — no sources found");
+      // Ensure default repos are persisted if this is the first interaction
+      if (repos.isEmpty) {
+        repos = defaultSourceUrls
+            .map((url) => Repo(url: url, managerId: id))
+            .toList(growable: true);
+        _saveRepos(repos, type);
       }
 
+      if (repos.any((r) => r.url == repoUrl)) return;
+
+      // Save repo to persistence first (so it persists even if fetch fails)
       final repo = Repo(url: repoUrl, managerId: id);
-      final updatedRepos = List<Repo>.from(repos)..add(repo);
-      _saveRepos(updatedRepos, type);
-      getReposRx(type).value = updatedRepos;
+      repos.add(repo);
+      _saveRepos(repos, type);
+      getReposRx(type).value = List.unmodifiable(repos);
 
-      // Merge new sources into the available list
-      final installed = _loadInstalled();
-      final installedIds = installed.map((e) => e.id).toSet();
+      // Then try to fetch sources from the new repo
+      try {
+        final newSources = await _fetchRepo(repoUrl);
 
-      final rawRx = getRawAvailableRx(type);
-      final existingRaw = rawRx.value;
-      final mergedRaw = {
-        for (final s in existingRaw) s.id: s,
-        for (final s in newSources) s.id: s,
-      }.values.toList(growable: false);
+        if (newSources.isNotEmpty) {
+          final installed = _loadInstalled();
+          final installedIds = installed.map((e) => e.id).toSet();
 
-      rawRx.value = List.unmodifiable(mergedRaw);
+          final rawRx = getRawAvailableRx(type);
+          final existingRaw = rawRx.value;
+          final mergedRaw = {
+            for (final s in existingRaw) s.id: s,
+            for (final s in newSources) s.id: s,
+          }.values.toList(growable: false);
 
-      final availRx = getAvailableRx(type);
-      final mergedAvail = mergedRaw.where((s) => !installedIds.contains(s.id)).toList();
-      availRx.value = List.unmodifiable(mergedAvail);
+          rawRx.value = List.unmodifiable(mergedRaw);
+
+          final availRx = getAvailableRx(type);
+          final mergedAvail = mergedRaw.where((s) => !installedIds.contains(s.id)).toList();
+          availRx.value = List.unmodifiable(mergedAvail);
+        }
+      } catch (e) {
+        // Fetch failed but repo is saved — will be fetched on next refresh
+        Logger.log("Legado: Repo saved but fetch failed for $repoUrl: $e");
+      }
     } catch (e) {
       Logger.log("Legado: Failed to add repo $repoUrl: $e");
       rethrow;
