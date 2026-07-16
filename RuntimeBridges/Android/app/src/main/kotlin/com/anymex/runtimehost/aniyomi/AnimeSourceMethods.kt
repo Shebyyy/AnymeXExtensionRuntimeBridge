@@ -70,5 +70,7 @@ class AnimeSourceMethods(sourceID: String, langIndex: Int = 0) : AniyomiSourceMe
             throw NoPreferenceScreenException("This source does not support preferences.")
         }
     }
+
+    override fun getHttpSource(): Any? = source as? AnimeHttpSource
 }
 class NoPreferenceScreenException(message: String) : Exception(message)

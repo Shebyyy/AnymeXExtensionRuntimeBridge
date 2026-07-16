@@ -134,10 +134,45 @@ class CloudStreamExtensions extends Extension {
       }
     }
 
+    final availableByName = <String, CloudStreamSource>{};
+    for (final s in allAvailable) {
+      final cs = s as CloudStreamSource;
+      final norm = _normalizeName(cs.internalName ?? cs.name);
+      final normName = _normalizeName(cs.name);
+      availableByName[norm] = cs;
+      if (norm != normName) availableByName[normName] = cs;
+    }
+
+    bool installedChanged = false;
+    final updatedInstalled = installedAnimeExtensions.value.map((s) {
+      final cs = s as CloudStreamSource;
+      final normInternal = _normalizeName(cs.internalName ?? cs.name);
+      final normName = _normalizeName(cs.name);
+      final available = availableByName[normInternal] ?? availableByName[normName];
+      if (available != null) {
+        final installedVersion = _parseVersion(cs.version);
+        final repoVersion = _parseVersion(available.version);
+        final updateAvailable = repoVersion > installedVersion;
+        if (updateAvailable != (cs.hasUpdate ?? false)) {
+          installedChanged = true;
+          cs.hasUpdate = updateAvailable;
+          if (updateAvailable) {
+            cs.pluginUrl = available.pluginUrl ?? cs.pluginUrl;
+            cs.versionLast = available.version;
+          }
+        }
+      }
+      return cs;
+    }).toList();
+
+    if (installedChanged) {
+      installedAnimeExtensions.value = List<Source>.from(updatedInstalled);
+    }
+
     final installedNames =
-        installedAnimeExtensions.value.map((e) => _normalizeName(e.name)).toSet();
-    final installedInternalNames = installedAnimeExtensions.value
-        .map((e) => (e as CloudStreamSource).internalName)
+        updatedInstalled.map((e) => _normalizeName(e.name)).toSet();
+    final installedInternalNames = updatedInstalled
+        .map((e) => (e).internalName)
         .where((name) => name != null)
         .map((name) => _normalizeName(name))
         .toSet();
@@ -152,6 +187,21 @@ class CloudStreamExtensions extends Extension {
           !installedInternalNames.contains(normInternalName);
     }).toList();
   }
+
+  int _parseVersion(String? version) {
+    if (version == null || version.isEmpty) return 0;
+    final cleaned = version.replaceAll(RegExp(r'^[vV]'), '');
+    final parts = cleaned.split(RegExp(r'[.\-]'));
+    try {
+      final major = parts.isNotEmpty ? (int.tryParse(parts[0]) ?? 0) : 0;
+      final minor = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+      final patch = parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0;
+      return major * 1000000 + minor * 1000 + patch;
+    } catch (_) {
+      return 0;
+    }
+  }
+
 
   @override
   Future<void> fetchMangaExtensions() async {}

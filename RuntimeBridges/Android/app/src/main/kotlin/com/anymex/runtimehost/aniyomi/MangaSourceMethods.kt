@@ -191,4 +191,5 @@ class MangaSourceMethods(sourceID: String, langIndex: Int = 0) : AniyomiSourceMe
         }
     }
 
+    override fun getHttpSource(): Any? = source as? HttpSource
 }

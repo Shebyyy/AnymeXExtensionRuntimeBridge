@@ -136,15 +136,6 @@ class AnymexExtensionRuntimeBridgePlugin : FlutterPlugin, ActivityAware {
             return false
         }
 
-//        runtimeBridge?.let { oldBridge ->
-//            try {
-//                Log.i(TAG, "Shutting down existing runtime host...")
-//                bridgeClass?.getMethod("shutdown")?.invoke(oldBridge)
-//            } catch (e: Exception) {
-//                Log.e(TAG, "Error shutting down old runtime host: ${e.message}")
-//            }
-//        }
-
         return try {
             runtimeBridge = null
             bridgeClass = null
@@ -479,6 +470,13 @@ class AnymexExtensionRuntimeBridgePlugin : FlutterPlugin, ActivityAware {
                             call.argument<String>("key") ?: "",
                             call.argument<Any>("value"))
                     }
+                    "openSettings" -> {
+                        val pluginName = call.argument<String>("pluginName") ?: ""
+                        val settingsActivity = activity ?: ctx
+                        withContext(Dispatchers.Main) {
+                            call("csOpenSettings", settingsActivity, pluginName)
+                        }
+                    }
                     else -> { withContext(Dispatchers.Main) { result.notImplemented() }; return@launch }
                 }
                 withContext(Dispatchers.Main) { result.success(res) }
@@ -696,8 +694,9 @@ class AnymexExtensionRuntimeBridgePlugin : FlutterPlugin, ActivityAware {
                 }
             }
 
+            if (dstFile.exists()) dstFile.delete()
+
             if (tmpFile.renameTo(dstFile)) {
-                dstFile.setReadOnly()
                 Log.i(TAG, "Successfully installed internal extension: $packageName to ${dstFile.absolutePath}")
                 true
             } else {
@@ -739,12 +738,23 @@ class AnymexExtensionRuntimeBridgePlugin : FlutterPlugin, ActivityAware {
 
         private val systemClassLoader: ClassLoader? = getSystemClassLoader()
 
+        private fun shouldDelegateToParent(name: String?): Boolean {
+            if (name == null) return false
+            return name.startsWith("androidx.")
+        }
+
         override fun loadClass(name: String?, resolve: Boolean): Class<*> {
             var c = findLoadedClass(name)
 
             if (c == null && systemClassLoader != null) {
                 try {
                     c = systemClassLoader.loadClass(name)
+                } catch (_: ClassNotFoundException) {}
+            }
+
+            if (c == null && shouldDelegateToParent(name)) {
+                try {
+                    c = parent.loadClass(name)
                 } catch (_: ClassNotFoundException) {}
             }
 

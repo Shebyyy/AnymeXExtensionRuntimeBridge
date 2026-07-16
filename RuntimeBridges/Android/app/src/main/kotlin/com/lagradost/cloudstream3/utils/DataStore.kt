@@ -146,7 +146,6 @@ object DataStore {
     inline fun <reified T : Any> Context.getKey(folder: String, path: String, defVal: T?): T? =
         getKey(getFolderName(folder, path), defVal) ?: defVal
 
-    // --- Convenience static methods using appContext ---
 
     fun <T> setKey(path: String, value: T) {
         appContext?.setKey(path, value)
@@ -179,6 +178,10 @@ object DataStore {
     fun <T : Any> setKeyClass(path: String, value: T) { appContext?.setKey(path, value) }
 
     fun removeKeys(folder: String): Int? = appContext?.removeKeys(folder)
+
+    fun getDefaultSharedPrefs(context: Context): SharedPreferences {
+        return context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    }
 
     fun Int.toYear(): Date = GregorianCalendar.getInstance().also { it.set(Calendar.YEAR, this) }.time
 }
