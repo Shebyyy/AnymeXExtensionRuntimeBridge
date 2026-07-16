@@ -44,6 +44,7 @@ class ExtensionManager extends GetxController {
     await _registerAndInitializeManagers([
       SoraExtensions(),
       MangayomiExtensions(),
+      LegadoExtensions(),
     ]);
 
     await onRuntimeBridgeInitialization();
@@ -337,6 +338,8 @@ extension SourceExecution on Source {
           'https://static.everythingmoe.com/icons/cloudstream.png',
         KotatsuSource _ =>
           'https://raw.githubusercontent.com/KotatsuApp/Kotatsu/devel/metadata/en-US/icon.png',
+        LegadoSource _ =>
+          'https://raw.githubusercontent.com/gedoor/legado/master/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp',
         _ => 'mangayomi',
       };
 
@@ -362,6 +365,9 @@ Extension getSourceManager(Source source) {
   }
   if (source is KotatsuSource) {
     return em.findById('kotatsu') ?? em.findById('kotatsu-desktop')!;
+  }
+  if (source is LegadoSource) {
+    return em.findById('legado')!;
   }
 
   return em.findById('mangayomi')!;

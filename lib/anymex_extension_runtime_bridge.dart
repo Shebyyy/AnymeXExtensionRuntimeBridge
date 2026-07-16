@@ -30,4 +30,8 @@ export './Services/Kotatsu/KotatsuExtensions.dart';
 export './Services/Kotatsu/KotatsuSourceMethods.dart';
 export './Services/KotatsuDesktop/DesktopKotatsuExtensions.dart';
 export './Services/KotatsuDesktop/DesktopKotatsuSourceMethods.dart';
+export './Services/Legado/Models/LegadoSource.dart';
+export './Services/Legado/LegadoExtensions.dart';
+export './Services/Legado/LegadoSourceMethods.dart';
+export './Services/Legado/LegadoRuleEngine.dart';
 
