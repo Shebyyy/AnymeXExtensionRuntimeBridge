@@ -117,6 +117,14 @@ object DataStore {
 
     fun removeKeys(folder: String): Int? = appContext?.removeKeys(folder)
 
+    fun Context.getSharedPrefs(): SharedPreferences {
+        return getSharedPreferences("cloudstream_plugin_preferences", Context.MODE_PRIVATE)
+    }
+
+    fun Context.getDefaultSharedPrefs(): SharedPreferences {
+        return getSharedPreferences("cloudstream_plugin_preferences", Context.MODE_PRIVATE)
+    }
+
     fun Int.toYear(): Date = GregorianCalendar.getInstance().also { it.set(Calendar.YEAR, this) }.time
 }
 

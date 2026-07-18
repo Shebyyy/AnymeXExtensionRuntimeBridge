@@ -11,4 +11,7 @@ abstract class Plugin : BasePlugin() {
         // If not overridden by an extension then try the cross-platform load()
         load()
     }
+
+    var openSettings: ((Any?) -> Unit)? = null
+        set(value) { field = value }
 }

@@ -11,6 +11,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.DataStore.toKotlinObject
+import com.lagradost.cloudstream3.utils.DataStore.toYear
 import java.net.URLEncoder
 import java.util.*
 
@@ -33,15 +34,15 @@ class AniListApi : SyncAPI() {
     override suspend fun login(redirectUrl: String, payload: String?): AuthToken? {
         val sanitizer = splitRedirectUrl(redirectUrl)
         val token = AuthToken(
-            accessToken = sanitizer["access_token"] ?: throw Exception("No access token"),
-            accessTokenLifetime = unixTime + (sanitizer["expires_in"]?.toLong() ?: 0L),
+            accessToken = sanitizer["access_token"] ?: throw ErrorLoadingException("No access token"),
+            accessTokenLifetime = unixTime + sanitizer["expires_in"]!!.toLong(),
         )
         return token
     }
 
     override suspend fun user(token: AuthToken?): AuthUser? {
         val user = getUser(token ?: return null)
-            ?: throw Exception("Unable to fetch user data")
+            ?: throw ErrorLoadingException("Unable to fetch user data")
 
         return AuthUser(
             id = user.id,
@@ -60,7 +61,7 @@ class AniListApi : SyncAPI() {
     override suspend fun search(auth : AuthData?, query: String): List<SyncSearchResult>? {
         val data = searchShows(query) ?: return null
         return data.data?.page?.media?.map {
-            SyncSearchResultImpl(
+            SyncSearchResult(
                 it.title.romaji ?: "No Title",
                 this.name,
                 it.id.toString(),
@@ -72,7 +73,7 @@ class AniListApi : SyncAPI() {
 
     override suspend fun load(auth : AuthData?, id: String): SyncResult? {
         val internalId = (Regex("anilist\\.co/anime/(\\d*)").find(id)?.groupValues?.getOrNull(1)
-            ?: id).toIntOrNull() ?: throw Exception("Invalid internalId")
+            ?: id).toIntOrNull() ?: throw ErrorLoadingException("Invalid internalId")
         val season = getSeason(internalId).data.media
 
         return SyncResult(
@@ -115,7 +116,7 @@ class AniListApi : SyncAPI() {
             publicScore = Score.from100(season.averageScore),
             recommendations = season.recommendations?.edges?.mapNotNull { rec ->
                 val recMedia = rec.node.mediaRecommendation
-                SyncSearchResultImpl(
+                SyncSearchResult(
                     name = recMedia?.title?.userPreferred ?: return@mapNotNull null,
                     this.name,
                     recMedia.id?.toString() ?: return@mapNotNull null,
@@ -158,12 +159,37 @@ class AniListApi : SyncAPI() {
         )
     }
 
+    suspend fun getAllSeasons(id: Int): List<SeasonResponse?> {
+        val seasons = mutableListOf<SeasonResponse?>()
+        suspend fun getSeasonRecursive(id: Int) {
+            val season = getSeason(id)
+            seasons.add(season)
+            if (season.data.media.format?.startsWith("TV") == true) {
+                season.data.media.relations?.edges?.forEach {
+                    if (it.node?.format != null) {
+                        if (it.relationType == "SEQUEL" && it.node.format.startsWith("TV")) {
+                            getSeasonRecursive(it.node.id)
+                            return@forEach
+                        }
+                    }
+                }
+            }
+        }
+        getSeasonRecursive(id)
+        return seasons.toList()
+    }
+
     companion object {
         const val MAX_STALE = 60 * 10
         private val aniListStatusString =
             arrayOf("CURRENT", "COMPLETED", "PAUSED", "DROPPED", "PLANNING", "REPEATING")
 
         const val ANILIST_CACHED_LIST: String = "anilist_cached_list"
+
+        private fun fixName(name: String): String {
+            return name.lowercase(Locale.ROOT).replace(" ", "")
+                .replace("[^a-zA-Z0-9]".toRegex(), "")
+        }
 
         private suspend fun searchShows(name: String): GetSearchRoot? {
             try {
@@ -225,10 +251,10 @@ class AniListApi : SyncAPI() {
                 val data = mapOf(
                         "query" to query,
                         "variables" to mapOf(
-                                     "search" to name,
-                                     "page" to 1,
-                                     "type" to "ANIME"
-                                 ).toJson()
+                                    "search" to name,
+                                    "page" to 1,
+                                    "type" to "ANIME"
+                                ).toJson()
                     )
 
                 val res = app.post(
@@ -236,21 +262,21 @@ class AniListApi : SyncAPI() {
                     data = data,
                     timeout = 5000
                 ).text.replace("\\", "")
-                return res.toKotlinObject<GetSearchRoot>()
+                return res.toKotlinObject()
             } catch (e: Exception) {
                 logError(e)
             }
             return null
         }
 
-        enum class AniListStatusType(var value: Int) {
-            Watching(0),
-            Completed(1),
-            Paused(2),
-            Dropped(3),
-            Planning(4),
-            ReWatching(5),
-            None(-1)
+        enum class AniListStatusType(var value: Int, val stringRes: Int) {
+            Watching(0, 0),
+            Completed(1, 0),
+            Paused(2, 0),
+            Dropped(3, 0),
+            Planning(4, 0),
+            ReWatching(5, 0),
+            None(-1, 0)
         }
 
         fun fromIntToAnimeStatus(inp: Int): AniListStatusType {
@@ -266,10 +292,14 @@ class AniListApi : SyncAPI() {
             }
         }
 
+        fun convertAniListStringToStatus(string: String): AniListStatusType {
+            return fromIntToAnimeStatus(aniListStatusString.indexOf(string))
+        }
+
         private suspend fun getSeason(id: Int): SeasonResponse {
             val q = """
-               query (${"$"}id: Int = $id) {
-                   Media (id: ${"$"}id, type: ANIME) {
+               query (${'$'}id: Int = $id) {
+                   Media (id: ${'$'}id, type: ANIME) {
                        id
                        idMal
                        coverImage {
@@ -372,16 +402,17 @@ class AniListApi : SyncAPI() {
             val data = app.post(
                 "https://graphql.anilist.co",
                 data = mapOf("query" to q),
+                cacheTime = 0,
             ).text
 
-            return tryParseJson(data) ?: throw Exception("Error parsing $data")
+            return tryParseJson(data) ?: throw ErrorLoadingException("Error parsing $data")
         }
     }
 
     private suspend fun getDataAboutId(auth : AuthData, id: Int): AniListTitleHolder? {
         val q =
-            """query (${"$"}id: Int = $id) {
-                Media (id: ${"$"}id, type: ANIME) {
+            """query (${'$'}id: Int = $id) {
+                Media (id: ${'$'}id, type: ANIME) {
                     id
                     episodes
                     isFavourite
@@ -431,12 +462,184 @@ class AniListApi : SyncAPI() {
                 "Authorization" to "Bearer ${token.accessToken ?: return null}",
                 if (cache) "Cache-Control" to "max-stale=$MAX_STALE" else "Cache-Control" to "no-cache"
             ),
+            cacheTime = 0,
             data = mapOf(
                 "query" to URLEncoder.encode(q, "UTF-8")
             ),
             timeout = 5000
         ).text.replace("\\/", "/")
     }
+
+    data class MediaRecommendation(
+        @JsonProperty("id") val id: Int,
+        @JsonProperty("title") val title: Title?,
+        @JsonProperty("idMal") val idMal: Int?,
+        @JsonProperty("coverImage") val CoverImage: CoverImage?,
+        @JsonProperty("averageScore") val averageScore: Int?
+    )
+
+    data class FullAnilistList(
+        @JsonProperty("data") val data: Data?
+    )
+
+    data class CompletedAt(
+        @JsonProperty("year") val year: Int?,
+        @JsonProperty("month") val month: Int?,
+        @JsonProperty("day") val day: Int?
+    )
+
+    data class StartedAt(
+        @JsonProperty("year") val year: String?,
+        @JsonProperty("month") val month: String?,
+        @JsonProperty("day") val day: String?
+    )
+
+    data class Title(
+        @JsonProperty("english") val english: String?,
+        @JsonProperty("romaji") val romaji: String?
+    )
+
+    data class CoverImage(
+        @JsonProperty("medium") val medium: String?,
+        @JsonProperty("large") val large: String?,
+        @JsonProperty("extraLarge") val extraLarge: String?
+    )
+
+    data class Media(
+        @JsonProperty("id") val id: Int,
+        @JsonProperty("idMal") val idMal: Int?,
+        @JsonProperty("season") val season: String?,
+        @JsonProperty("seasonYear") val seasonYear: Int?,
+        @JsonProperty("format") val format: String?,
+        @JsonProperty("episodes") val episodes: Int?,
+        @JsonProperty("title") val title: Title,
+        @JsonProperty("description") val description: String?,
+        @JsonProperty("coverImage") val coverImage: CoverImage,
+        @JsonProperty("synonyms") val synonyms: List<String>?,
+        @JsonProperty("nextAiringEpisode") val nextAiringEpisode: SeasonNextAiringEpisode?,
+    )
+
+    data class Entries(
+        @JsonProperty("status") val status: String?,
+        @JsonProperty("completedAt") val completedAt: CompletedAt?,
+        @JsonProperty("startedAt") val startedAt: StartedAt?,
+        @JsonProperty("updatedAt") val updatedAt: Long?,
+        @JsonProperty("progress") val progress: Int?,
+        @JsonProperty("score") val score: Int?,
+        @JsonProperty("private") val private: Boolean?,
+        @JsonProperty("media") val media: Media
+    ) {
+        fun toLibraryItem(): LibraryItem {
+            return LibraryItem(
+                this.media.title.english ?: this.media.title.romaji
+                ?: this.media.synonyms?.firstOrNull()
+                ?: "",
+                "https://anilist.co/anime/${this.media.id}/",
+                this.media.id.toString(),
+                this.progress,
+                this.media.episodes,
+                Score.from100(this.score),
+                this.updatedAt ?: 0,
+                "AniList",
+                TvType.Anime,
+                this.media.coverImage.extraLarge ?: this.media.coverImage.large
+                ?: this.media.coverImage.medium,
+                null,
+                null,
+                this.media.seasonYear?.toYear(),
+                null,
+                plot = this.media.description,
+            )
+        }
+    }
+
+    data class Lists(
+        @JsonProperty("status") val status: String?,
+        @JsonProperty("entries") val entries: List<Entries>
+    )
+
+    data class MediaListCollection(
+        @JsonProperty("lists") val lists: List<Lists>
+    )
+
+    data class Data(
+        @JsonProperty("MediaListCollection") val mediaListCollection: MediaListCollection
+    )
+
+    private suspend fun getAniListAnimeListSmart(auth: AuthData): Array<Lists>? {
+        return if (requireLibraryRefresh) {
+            val list = getFullAniListList(auth)?.data?.mediaListCollection?.lists?.toTypedArray()
+            if (list != null) {
+                setKey(ANILIST_CACHED_LIST, auth.user.id.toString(), list)
+            }
+            list
+        } else {
+            getKey<Array<Lists>>(
+                ANILIST_CACHED_LIST,
+                auth.user.id.toString()
+            ) as? Array<Lists>
+        }
+    }
+
+    override suspend fun library(auth : AuthData?): LibraryMetadata? {
+        val listData = getAniListAnimeListSmart(auth ?: return null)?.map { group ->
+            LibraryList(group.status ?: "", group.entries.map { it.toLibraryItem() })
+        } ?: emptyList()
+
+        return LibraryMetadata(listData, null)
+    }
+
+    private suspend fun getFullAniListList(auth : AuthData): FullAnilistList? {
+        val userID = auth.user.id
+        val mediaType = "ANIME"
+
+        val query = """
+                query (${'$'}userID: Int = $userID, ${'$'}MEDIA: MediaType = $mediaType) {
+                    MediaListCollection (userId: ${'$'}userID, type: ${'$'}MEDIA) { 
+                        lists {
+                            status
+                            entries
+                            {
+                                status
+                                completedAt { year month day }
+                                startedAt { year month day }
+                                updatedAt
+                                progress
+                                score (format: POINT_100)
+                                private
+                                media
+                                {
+                                    id
+                                    idMal
+                                    season
+                                    seasonYear
+                                    format
+                                    episodes
+                                    chapters
+                                    title
+                                    {
+                                        english
+                                        romaji
+                                    }
+                                    coverImage { extraLarge large medium }
+                                    synonyms
+                                    nextAiringEpisode {
+                                        timeUntilAiring
+                                        episode
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    }
+            """
+        val text = postApi(auth.token, query)
+        return text?.toKotlinObject()
+    }
+
+    data class MediaListItemRoot(@JsonProperty("data") val data: MediaListItem? = null)
+    data class MediaListItem(@JsonProperty("MediaList") val mediaList: MediaListId? = null)
+    data class MediaListId(@JsonProperty("id") val id: Long? = null)
 
     private suspend fun postDataAboutId(
         auth : AuthData,
@@ -445,34 +648,53 @@ class AniListApi : SyncAPI() {
         score: Score?,
         progress: Int?
     ): Boolean {
+        val userID = auth.user.id
+
         val q = if (type == AniListStatusType.None) {
-                // Delete logic omitted or simplified for desktop
-                return false
+                val idQuery = """
+                  query MediaList(${'$'}userId: Int = $userID, ${'$'}mediaId: Int = $id) {
+                    MediaList(userId: ${'$'}userId, mediaId: ${'$'}mediaId) {
+                      id
+                    }
+                  }
+                """
+                val response = postApi(auth.token, idQuery)
+                val listId = tryParseJson<MediaListItemRoot>(response ?: "")?.data?.mediaList?.id ?: return false
+                """
+                    mutation(${'$'}id: Int = $listId) {
+                        DeleteMediaListEntry(id: ${'$'}id) {
+                            deleted
+                        }
+                    }
+                """
             } else {
-                """mutation (${"$"}id: Int = $id, ${"$"}status: MediaListStatus = ${
+                """mutation (${'$'}id: Int = $id, ${'$'}status: MediaListStatus = ${
                     aniListStatusString[maxOf(0, type.value)]
-                }, ${if (score != null) "${"$"}scoreRaw: Int = ${score.toInt(100)}" else ""} , ${if (progress != null) "${"$"}progress: Int = $progress" else ""}) {
-                    SaveMediaListEntry (mediaId: ${"$"}id, status: ${"$"}status, scoreRaw: ${"$"}scoreRaw, progress: ${"$"}progress) {
+                }, ${if (score != null) "${'$'}scoreRaw: Int = ${score.toInt(100)}" else ""} , ${if (progress != null) "${'$'}progress: Int = $progress" else ""}) {
+                    SaveMediaListEntry (mediaId: ${'$'}id, status: ${'$'}status, scoreRaw: ${'$'}scoreRaw, progress: ${'$'}progress) {
                         id
+                        status
+                        progress
+                        score
                     }
                 }"""
             }
 
         val data = postApi(auth.token, q)
-        return !data.isNullOrBlank()
+        return data != null && data != ""
     }
 
     private suspend fun getUser(token : AuthToken): AniListUser? {
         val q = """
-                {
-                    Viewer {
-                        id
-                        name
-                        avatar {
-                            large
-                        }
-                    }
-                }"""
+				{
+  					Viewer {
+    					id
+    					name
+						avatar {
+							large
+						}
+  					}
+				}"""
         val data = postApi(token, q)
         if (data.isNullOrBlank()) return null
         val userData = parseJson<AniListRoot>(data)
@@ -480,61 +702,243 @@ class AniListApi : SyncAPI() {
         return AniListUser(u.id, u.name, u.avatar?.large)
     }
 
-    // Interior DTOs for JSON mapping
-    data class GetDataRoot(val data: GetDataData?)
-    data class GetDataData(val media: GetDataMedia?)
-    data class GetDataMedia(val mediaListEntry: GetDataEntry?, val id: Int, val episodes: Int?, val isFavourite: Boolean?, val title: Title?)
-    data class GetDataEntry(val progress: Int, val status: String, val score: Int)
-    
-    data class AniListRoot(val data: AniListData?)
-    data class AniListData(val viewer: AniListViewer?)
-    data class AniListViewer(val id: Int, val name: String, val avatar: AniListAvatar?)
-    data class AniListAvatar(val large: String?)
-    data class AniListUser(val id: Int, val name: String, val picture: String?)
+    data class SeasonResponse(
+        @JsonProperty("data") val data: SeasonData,
+    )
+
+    data class SeasonData(
+        @JsonProperty("Media") val media: SeasonMedia,
+    )
+
+    data class SeasonMedia(
+        @JsonProperty("id") val id: Int?, 
+        @JsonProperty("title") val title: MediaTitle?,
+        @JsonProperty("idMal") val idMal: Int?,
+        @JsonProperty("format") val format: String?,
+        @JsonProperty("nextAiringEpisode") val nextAiringEpisode: SeasonNextAiringEpisode?,
+        @JsonProperty("relations") val relations: SeasonEdges?,
+        @JsonProperty("coverImage") val coverImage: MediaCoverImage?,
+        @JsonProperty("duration") val duration: Int?,
+        @JsonProperty("episodes") val episodes: Int?,
+        @JsonProperty("genres") val genres: List<String>?,
+        @JsonProperty("synonyms") val synonyms: List<String>?,
+        @JsonProperty("averageScore") val averageScore: Int?,
+        @JsonProperty("isAdult") val isAdult: Boolean?,
+        @JsonProperty("trailer") val trailer: MediaTrailer?,
+        @JsonProperty("description") val description: String?,
+        @JsonProperty("characters") val characters: CharacterConnection?,
+        @JsonProperty("recommendations") val recommendations: RecommendationConnection?,
+    )
+
+    data class RecommendationConnection(
+        @JsonProperty("edges") val edges: List<RecommendationEdge> = emptyList(),
+        @JsonProperty("nodes") val nodes: List<Recommendation> = emptyList(),
+    )
+
+    data class RecommendationEdge(
+        @JsonProperty("node") val node: Recommendation,
+    )
+
+    data class Recommendation(
+        val id: Long,
+        @JsonProperty("mediaRecommendation") val mediaRecommendation: SeasonMedia?,
+    )
+
+    data class CharacterName(
+        @JsonProperty("userPreferred") val userPreferred: String?,
+        @JsonProperty("full") val full: String?,
+        @JsonProperty("native") val native: String?,
+    )
+
+    data class CharacterImage(
+        @JsonProperty("large") val large: String?,
+        @JsonProperty("medium") val medium: String?,
+    )
+
+    data class Character(
+        @JsonProperty("name") val name: CharacterName?,
+        @JsonProperty("age") val age: String?,
+        @JsonProperty("image") val image: CharacterImage?,
+    )
+
+    data class CharacterEdge(
+        @JsonProperty("role") val role: String?,
+        @JsonProperty("voiceActors") val voiceActors: List<Staff>?,
+        @JsonProperty("node") val node: Character?,
+    )
+
+    data class StaffName(
+        @JsonProperty("userPreferred") val userPreferred: String?,
+        @JsonProperty("full") val full: String?,
+        @JsonProperty("native") val native: String?,
+    )
+
+    data class Staff(
+        @JsonProperty("image") val image: CharacterImage?,
+        @JsonProperty("name") val name: StaffName?,
+    )
+
+    data class CharacterConnection(
+        @JsonProperty("edges") val edges: List<CharacterEdge>?,
+    )
+
+    data class MediaTrailer(
+        @JsonProperty("id") val id: String?,
+        @JsonProperty("site") val site: String?,
+        @JsonProperty("thumbnail") val thumbnail: String?,
+    )
+
+    data class MediaCoverImage(
+        @JsonProperty("extraLarge") val extraLarge: String?,
+        @JsonProperty("large") val large: String?,
+        @JsonProperty("medium") val medium: String?,
+        @JsonProperty("color") val color: String?,
+    )
+
+    data class SeasonNextAiringEpisode(
+        @JsonProperty("episode") val episode: Int?,
+        @JsonProperty("timeUntilAiring") val timeUntilAiring: Int?,
+    )
+
+    data class SeasonEdges(
+        @JsonProperty("edges") val edges: List<SeasonEdge>?,
+    )
+
+    data class SeasonEdge(
+        @JsonProperty("relationType") val relationType: String?,
+        @JsonProperty("node") val node: SeasonNode?,
+    )
+
+    data class MediaTitle(
+        @JsonProperty("romaji") val romaji: String?,
+        @JsonProperty("english") val english: String?,
+        @JsonProperty("native") val native: String?,
+        @JsonProperty("userPreferred") val userPreferred: String?,
+    )
+
+    data class SeasonNode(
+        @JsonProperty("id") val id: Int,
+        @JsonProperty("format") val format: String?,
+        @JsonProperty("title") val title: Title?,
+        @JsonProperty("coverImage") val coverImage: CoverImage?,
+    )
+
+    data class AniListAvatar(
+        @JsonProperty("large") val large: String?,
+    )
+
+    data class AniListViewer(
+        @JsonProperty("id") val id: Int,
+        @JsonProperty("name") val name: String,
+        @JsonProperty("avatar") val avatar: AniListAvatar?,
+    )
+
+    data class AniListData(
+        @JsonProperty("Viewer") val viewer: AniListViewer?,
+    )
+
+    data class AniListRoot(
+        @JsonProperty("data") val data: AniListData?,
+    )
+
+    data class AniListUser(
+        val id: Int,
+        val name: String,
+        val picture: String?,
+    )
+
+    data class LikeNode(
+        @JsonProperty("id") val id: Int?,
+    )
+
+    data class LikePageInfo(
+        @JsonProperty("total") val total: Int?,
+        @JsonProperty("currentPage") val currentPage: Int?,
+        @JsonProperty("lastPage") val lastPage: Int?,
+        @JsonProperty("perPage") val perPage: Int?,
+        @JsonProperty("hasNextPage") val hasNextPage: Boolean?,
+    )
+
+    data class LikeAnime(
+        @JsonProperty("nodes") val nodes: List<LikeNode>?,
+        @JsonProperty("pageInfo") val pageInfo: LikePageInfo?,
+    )
+
+    data class LikeFavourites(
+        @JsonProperty("anime") val anime: LikeAnime?,
+    )
+
+    data class LikeViewer(
+        @JsonProperty("favourites") val favourites: LikeFavourites?,
+    )
+
+    data class LikeData(
+        @JsonProperty("Viewer") val viewer: LikeViewer?,
+    )
+
+    data class LikeRoot(
+        @JsonProperty("data") val data: LikeData?,
+    )
 
     data class AniListTitleHolder(
         val title: Title?,
-        val id: Int,
         val isFavourite: Boolean?,
-        val progress: Int,
+        val id: Int?,
+        val progress: Int?,
         val episodes: Int?,
-        val score: Int,
-        val type: AniListStatusType
+        val score: Int?,
+        val type: AniListStatusType?,
     )
 
-    data class GetSearchRoot(val data: GetSearchData?)
-    data class GetSearchData(val page: GetSearchPage?)
-    data class GetSearchPage(val media: List<GetSearchMedia>?)
-    data class GetSearchMedia(val id: Int, val bannerImage: String?, val title: Title)
-
-    data class SeasonResponse(val data: SeasonData)
-    data class SeasonData(@JsonProperty("Media") val media: SeasonMedia)
-    data class SeasonMedia(
-        val id: Int,
-        val title: Title?,
-        val episodes: Int?,
-        val description: String?,
-        val averageScore: Int?,
-        val isAdult: Boolean?,
-        val synonyms: List<String>?,
-        val bannerImage: String?,
-        val characters: CharacterConnection?,
-        val nextAiringEpisode: SeasonNextAiringEpisode?,
-        val recommendations: RecommendationConnection?,
-        val trailer: MediaTrailer?,
-        val coverImage: CoverImage?
+    data class GetDataMediaListEntry(
+        @JsonProperty("progress") val progress: Int?,
+        @JsonProperty("status") val status: String?,
+        @JsonProperty("score") val score: Int?,
     )
-    data class Title(val romaji: String?, val english: String?, val userPreferred: String?)
-    data class CharacterConnection(val edges: List<CharacterEdge>?)
-    data class CharacterEdge(val role: String?, val node: Character?, val voiceActors: List<Staff>?)
-    data class Character(val name: Name?, val image: Image?)
-    data class Staff(val name: Name?, val image: Image?)
-    data class Name(val full: String?, val native: String?, val userPreferred: String?)
-    data class Image(val medium: String?, val large: String?)
-    data class SeasonNextAiringEpisode(val episode: Int?, val timeUntilAiring: Int?)
-    data class RecommendationConnection(val edges: List<RecommendationEdge>?)
-    data class RecommendationEdge(val node: Recommendation)
-    data class Recommendation(val mediaRecommendation: SeasonMedia?)
-    data class MediaTrailer(val id: String?, val site: String?)
-    data class CoverImage(val extraLarge: String?, val large: String?, val medium: String?)
+
+    data class GetDataMedia(
+        @JsonProperty("isFavourite") val isFavourite: Boolean?,
+        @JsonProperty("episodes") val episodes: Int?,
+        @JsonProperty("title") val title: Title?,
+        @JsonProperty("mediaListEntry") val mediaListEntry: GetDataMediaListEntry?
+    )
+
+    data class GetDataData(
+        @JsonProperty("Media") val media: GetDataMedia?,
+    )
+
+    data class GetDataRoot(
+        @JsonProperty("data") val data: GetDataData?,
+    )
+
+    data class GetSearchTitle(
+        @JsonProperty("romaji") val romaji: String?,
+    )
+
+    data class TrailerObject(
+        @JsonProperty("id") val id: String?,
+        @JsonProperty("site") val site: String?,
+    )
+
+    data class GetSearchMedia(
+        @JsonProperty("id") val id: Int,
+        @JsonProperty("seasonYear") val seasonYear: Int?,
+        @JsonProperty("title") val title: GetSearchTitle,
+        @JsonProperty("startDate") val startDate: StartedAt?,
+        @JsonProperty("bannerImage") val bannerImage: String?,
+        @JsonProperty("trailer") val trailer: TrailerObject?,
+        @JsonProperty("nextAiringEpisode") val nextAiringEpisode: SeasonNextAiringEpisode?,
+    )
+
+    data class GetSearchPage(
+        @JsonProperty("media") val media: List<GetSearchMedia>?,
+    )
+
+    data class GetSearchData(
+        @JsonProperty("Page") val page: GetSearchPage?,
+    )
+
+    data class GetSearchRoot(
+        @JsonProperty("data") val data: GetSearchData?,
+    )
 }
