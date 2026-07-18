@@ -64,6 +64,7 @@ object CloudStreamExtensionLoader {
                     val zipFile = ZipFile(jar)
                     val manifestEntry = zipFile.getEntry("manifest.json") ?: zipFile.getEntry("plugins.manifest")
                     if (manifestEntry == null) {
+                        System.err.println("  [CS] Skipped ${jar.name}: no manifest.json or plugins.manifest found")
                         zipFile.close()
                         return@Thread
                     }
@@ -72,6 +73,7 @@ object CloudStreamExtensionLoader {
                     val manifest = gson.fromJson(manifestContent, JsonObject::class.java)
                     val pluginClassName = manifest.get("pluginClassName")?.asString ?: ""
                     val version = manifest.get("version")?.asString ?: "1.0.0"
+                    System.err.println("  [CS] Manifest: pluginClassName='$pluginClassName' version='$version'")
                     zipFile.close()
 
                     val tempJar = File.createTempFile("cs_ext_", ".jar").apply { deleteOnExit() }
@@ -79,7 +81,10 @@ object CloudStreamExtensionLoader {
                     val classLoader = URLClassLoader(arrayOf(tempJar.toURI().toURL()), CloudStreamExtensionLoader::class.java.classLoader)
                     
                     val pluginClass = if (pluginClassName.isNotEmpty()) {
-                        try { Class.forName(pluginClassName, false, classLoader) } catch (e: Throwable) { null }
+                        try { Class.forName(pluginClassName, false, classLoader) } catch (e: Throwable) {
+                            System.err.println("  [CS] Could not load pluginClass '$pluginClassName': ${e.javaClass.simpleName}: ${e.message}")
+                            null
+                        }
                     } else null
 
                     if (pluginClass != null) {
@@ -90,10 +95,15 @@ object CloudStreamExtensionLoader {
                         }
                     }
 
+                    val beforeCount = jsonArray.size()
                     findMainApisInJar(jar, classLoader, version, jsonArray)
+                    val afterCount = jsonArray.size()
+                    if (afterCount == beforeCount && pluginClass == null) {
+                        System.err.println("  [CS] No APIs found in ${jar.name}")
+                    }
                     classLoaders[jar.absolutePath] = classLoader
                 } catch (e: Throwable) {
-                    System.err.println("  [CS] Error processing ${jar.name}: ${e.message}")
+                    System.err.println("  [CS] Error processing ${jar.name}: ${e.javaClass.simpleName}: ${e.message}")
                 }
             }
             
@@ -116,7 +126,26 @@ object CloudStreamExtensionLoader {
         
         if (instance is com.lagradost.cloudstream3.plugins.Plugin) {
             val preApis = com.lagradost.cloudstream3.APIHolder.apis.toList()
-            val loadThread = Thread { try { instance.load(null) } catch (e: Throwable) {} }
+            val context = android.app.Application()
+            val loadThread = Thread {
+                try {
+                    val contextClass = android.content.Context::class.java
+                    val loadWithContext = try {
+                        pluginClass.getMethod("load", contextClass)
+                    } catch (e: NoSuchMethodException) { null }
+
+                    if (loadWithContext != null) {
+                        System.err.println("  [CS] Calling load(Context) on $className")
+                        loadWithContext.invoke(instance, context)
+                    } else {
+                        System.err.println("  [CS] Calling load() on $className (no Context overload)")
+                        instance.load(null)
+                    }
+                } catch (e: Throwable) {
+                    val cause = e.cause ?: e
+                    System.err.println("  [CS] load() failed for $className: ${cause.javaClass.simpleName}: ${cause.message}")
+                }
+            }
             loadThread.isDaemon = true
             loadThread.start()
             loadThread.join(10000L)
@@ -124,8 +153,11 @@ object CloudStreamExtensionLoader {
             val postApis = com.lagradost.cloudstream3.APIHolder.apis.toList()
             val newApis = postApis.filter { it !in preApis }
             if (newApis.isNotEmpty()) {
+                System.err.println("  [CS] Plugin $className registered ${newApis.size} API(s)")
                 newApis.forEach { addApiToJson(it, version, it.javaClass.name, jsonArray) }
                 return instance
+            } else {
+                System.err.println("  [CS] Plugin $className registered 0 APIs after load()")
             }
         }
         
@@ -183,23 +215,25 @@ object CloudStreamExtensionLoader {
 
     private fun findMainApisInJar(jar: File, classLoader: URLClassLoader, version: String, jsonArray: com.google.gson.JsonArray) {
         val zipFile = ZipFile(jar)
-        for (entry in zipFile.entries()) {
-            if (entry.name.endsWith(".class") && !entry.name.contains("$")) {
-                val className = entry.name.replace("/", ".").removeSuffix(".class")
-                try {
-                    val clazz = Class.forName(className, false, classLoader)
-                    if (isMainApiClass(clazz)) {
-                        val apiInstance = instantiateApi(clazz) as? MainAPI
-                        if (apiInstance != null) {
-                            addApiToJson(apiInstance, version, className, jsonArray)
-                        }
-                    }
-                } catch (e: Throwable) {
-                    val msg = e.message ?: e.toString()
-                    if (!msg.contains("ClassNotFoundException", ignoreCase = true)) {
-                        System.err.println("    [CS] Skipped $className: $msg")
+        val candidates = zipFile.entries()
+            .toList()
+            .filter { it.name.endsWith(".class") && !it.name.contains("$") }
+        System.err.println("  [CS] Inspecting ${candidates.size} top-level classes in ${jar.name}")
+        for (entry in candidates) {
+            val className = entry.name.replace("/", ".").removeSuffix(".class")
+            try {
+                val clazz = Class.forName(className, false, classLoader)
+                if (isMainApiClass(clazz)) {
+                    System.err.println("  [CS] Candidate API class: $className")
+                    val apiInstance = instantiateApi(clazz) as? MainAPI
+                    if (apiInstance != null) {
+                        addApiToJson(apiInstance, version, className, jsonArray)
+                    } else {
+                        System.err.println("    [CS] Could not instantiate $className (not a MainAPI or instantiation failed)")
                     }
                 }
+            } catch (e: Throwable) {
+                System.err.println("    [CS] Skipped $className: ${e.javaClass.simpleName}: ${e.message}")
             }
         }
         zipFile.close()
