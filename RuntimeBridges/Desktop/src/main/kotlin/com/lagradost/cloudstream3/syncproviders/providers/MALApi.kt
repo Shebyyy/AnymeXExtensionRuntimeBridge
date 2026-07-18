@@ -1,16 +1,28 @@
 package com.lagradost.cloudstream3.syncproviders.providers
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
-import com.lagradost.cloudstream3.syncproviders.*
+import com.lagradost.cloudstream3.Score
+import com.lagradost.cloudstream3.ShowStatus
+import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.syncproviders.AuthAPI
+import com.lagradost.cloudstream3.syncproviders.AuthData
+import com.lagradost.cloudstream3.syncproviders.AuthLoginPage
+import com.lagradost.cloudstream3.syncproviders.AuthToken
+import com.lagradost.cloudstream3.syncproviders.AuthUser
+import com.lagradost.cloudstream3.syncproviders.SyncAPI
+import com.lagradost.cloudstream3.syncproviders.SyncIdName
 import com.lagradost.cloudstream3.ui.SyncWatchType
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.DataStore.toKotlinObject
 import java.text.SimpleDateFormat
-import java.util.*
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.Locale
 
 const val MAL_MAX_SEARCH_LIMIT = 25
 
@@ -78,7 +90,7 @@ class MALApi : SyncAPI() {
         ).parsed<MalSearch>()
         return res.data.map {
             val node = it.node
-            SyncAPI.SyncSearchResultImpl(
+            SyncAPI.SyncSearchResult(
                 node.title,
                 this.name,
                 node.id.toString(),
@@ -121,11 +133,11 @@ class MALApi : SyncAPI() {
         @JsonProperty("mean") val mean: Double?,
         @JsonProperty("rank") val rank: Int?,
         @JsonProperty("popularity") val popularity: Int?,
-        @JsonProperty("num_list_users") val num_list_users: Int?,
-        @JsonProperty("num_scoring_users") val num_scoring_users: Int?,
+        @JsonProperty("num_list_users") val numListUsers: Int?,
+        @JsonProperty("num_scoring_users") val numScoringUsers: Int?,
         @JsonProperty("nsfw") val nsfw: String?,
-        @JsonProperty("created_at") val created_at: String?,
-        @JsonProperty("updated_at") val updated_at: String?,
+        @JsonProperty("created_at") val createdAt: String?,
+        @JsonProperty("updated_at") val updatedAt: String?,
         @JsonProperty("media_type") val mediaType: String?,
         @JsonProperty("status") val status: String?,
         @JsonProperty("genres") val genres: ArrayList<Genres>?,
@@ -139,6 +151,7 @@ class MALApi : SyncAPI() {
         @JsonProperty("pictures") val pictures: ArrayList<MainPicture>?,
         @JsonProperty("background") val background: String?,
         @JsonProperty("related_anime") val relatedAnime: ArrayList<RelatedAnime>?,
+        @JsonProperty("related_manga") val relatedManga: ArrayList<String>?,
         @JsonProperty("recommendations") val recommendations: ArrayList<Recommendations>?,
         @JsonProperty("studios") val studios: ArrayList<Studios>?,
         @JsonProperty("statistics") val statistics: Statistics?,
@@ -146,7 +159,7 @@ class MALApi : SyncAPI() {
 
     data class Recommendations(
         @JsonProperty("node") val node: Node? = null,
-        @JsonProperty("num_recommendations") val num_recommendations: Int? = null
+        @JsonProperty("num_recommendations") val numRecommendations: Int? = null
     )
 
     data class Studios(
@@ -157,27 +170,28 @@ class MALApi : SyncAPI() {
     data class MyListStatus(
         @JsonProperty("status") val status: String? = null,
         @JsonProperty("score") val score: Int? = null,
-        @JsonProperty("num_episodes_watched") val num_episodes_watched: Int? = null,
-        @JsonProperty("is_rewatching") val is_rewatching: Boolean? = null,
-        @JsonProperty("updated_at") val updated_at: String? = null
+        @JsonProperty("num_episodes_watched") val numEpisodesWatched: Int? = null,
+        @JsonProperty("is_rewatching") val isRewatching: Boolean? = null,
+        @JsonProperty("updated_at") val updatedAt: String? = null
     )
 
     data class RelatedAnime(
         @JsonProperty("node") val node: Node? = null,
         @JsonProperty("relation_type") val relationType: String? = null,
+        @JsonProperty("relation_type_formatted") val relationTypeFormatted: String? = null
     )
 
     data class Status(
         @JsonProperty("watching") val watching: String? = null,
         @JsonProperty("completed") val completed: String? = null,
-        @JsonProperty("on_hold") val on_hold: String? = null,
+        @JsonProperty("on_hold") val onHold: String? = null,
         @JsonProperty("dropped") val dropped: String? = null,
-        @JsonProperty("plan_to_watch") val plan_to_watch: String? = null
+        @JsonProperty("plan_to_watch") val planToWatch: String? = null
     )
 
     data class Statistics(
         @JsonProperty("status") val status: Status? = null,
-        @JsonProperty("num_list_users") val num_list_users: Int? = null
+        @JsonProperty("num_list_users") val numListUsers: Int? = null
     )
 
     private fun parseDate(string: String?): Long? {
@@ -189,7 +203,7 @@ class MALApi : SyncAPI() {
     }
 
     private fun toSearchResult(node: Node?): SyncAPI.SyncSearchResult? {
-        return SyncAPI.SyncSearchResultImpl(
+        return SyncAPI.SyncSearchResult(
             name = node?.title ?: return null,
             apiName = this.name,
             syncId = node.id.toString(),
@@ -222,8 +236,10 @@ class MALApi : SyncAPI() {
                     "currently_airing" -> ShowStatus.Ongoing
                     else -> null
                 },
+                nextAiring = null,
                 studio = malAnime.studios?.mapNotNull { it.name },
                 genres = malAnime.genres?.map { it.name },
+                trailers = null,
                 startDate = parseDate(malAnime.startDate),
                 endDate = parseDate(malAnime.endDate),
                 recommendations = malAnime.recommendations?.mapNotNull { rec ->
@@ -236,6 +252,7 @@ class MALApi : SyncAPI() {
                 prevSeason = malAnime.relatedAnime?.firstOrNull {
                     it.relationType == "prequel"
                 }?.let { toSearchResult(it.node) },
+                actors = null,
             )
         }
     }
@@ -255,7 +272,7 @@ class MALApi : SyncAPI() {
             score = Score.from10(data?.score),
             status = SyncWatchType.fromInternalId(malStatusAsString.indexOf(data?.status)),
             isFavorite = null,
-            watchedEpisodes = data?.num_episodes_watched,
+            watchedEpisodes = data?.numEpisodesWatched,
         )
     }
 
@@ -296,6 +313,16 @@ class MALApi : SyncAPI() {
                 SyncWatchType.REWATCHING -> MalStatusType.Watching
             }
         }
+
+        private fun parseDateLong(string: String?): Long? {
+            return try {
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.getDefault()).parse(
+                    string ?: return null
+                )?.time?.div(1000)
+            } catch (e: Exception) {
+                null
+            }
+        }
     }
 
     override fun loginRequest(): AuthLoginPage? {
@@ -329,6 +356,7 @@ class MALApi : SyncAPI() {
     }
 
     private var requestIdCounter = 0
+    private val allTitles = hashMapOf<Int, MalTitleHolder>()
 
     data class MalList(
         @JsonProperty("data") val data: List<Data>,
@@ -356,22 +384,22 @@ class MALApi : SyncAPI() {
         @JsonProperty("genres") val genres: List<Genres>?,
         @JsonProperty("rank") val rank: Int?,
         @JsonProperty("popularity") val popularity: Int?,
-        @JsonProperty("num_list_users") val num_list_users: Int?,
-        @JsonProperty("num_favorites") val num_favorites: Int?,
-        @JsonProperty("num_scoring_users") val num_scoring_users: Int?,
+        @JsonProperty("num_list_users") val numListUsers: Int?,
+        @JsonProperty("num_favorites") val numFavorites: Int?,
+        @JsonProperty("num_scoring_users") val numScoringUsers: Int?,
         @JsonProperty("start_season") val startSeason: StartSeason?,
         @JsonProperty("broadcast") val broadcast: Broadcast?,
         @JsonProperty("nsfw") val nsfw: String?,
-        @JsonProperty("created_at") val created_at: String?,
-        @JsonProperty("updated_at") val updated_at: String?
+        @JsonProperty("created_at") val createdAt: String?,
+        @JsonProperty("updated_at") val updatedAt: String?
     )
 
     data class ListStatus(
         @JsonProperty("status") val status: String?,
         @JsonProperty("score") val score: Int,
-        @JsonProperty("num_episodes_watched") val num_episodes_watched: Int,
-        @JsonProperty("is_rewatching") val is_rewatching: Boolean,
-        @JsonProperty("updated_at") val updated_at: String,
+        @JsonProperty("num_episodes_watched") val numEpisodesWatched: Int,
+        @JsonProperty("is_rewatching") val isRewatching: Boolean,
+        @JsonProperty("updated_at") val updatedAt: String,
     )
 
     data class Data(
@@ -383,17 +411,21 @@ class MALApi : SyncAPI() {
                 this.node.title,
                 "https://myanimelist.net/anime/${this.node.id}",
                 this.node.id.toString(),
-                this.listStatus?.num_episodes_watched,
+                this.listStatus?.numEpisodesWatched,
                 this.node.numEpisodes,
                 Score.from10(this.listStatus?.score),
-                null,
+                parseDateLong(this.listStatus?.updatedAt),
                 "MAL",
                 TvType.Anime,
                 this.node.mainPicture?.large ?: this.node.mainPicture?.medium,
                 null,
                 null,
-                null,
                 plot = this.node.synopsis,
+                releaseDate = if (this.node.startDate == null) null else try {
+                   SimpleDateFormat(if (this.node.startDate.length == 4) "yyyy" else if (this.node.startDate.length == 7) "yyyy-MM" else "yyyy-MM-dd", Locale.getDefault()).parse(this.node.startDate)
+                } catch (_: Exception) {
+                    null
+                }
             )
         }
     }
@@ -406,7 +438,7 @@ class MALApi : SyncAPI() {
     )
     data class Genres(@JsonProperty("id") val id: Int, @JsonProperty("name") val name: String)
     data class StartSeason(@JsonProperty("year") val year: Int, @JsonProperty("season") val season: String)
-    data class Broadcast(@JsonProperty("day_of_the_week") val day_of_the_week: String?, @JsonProperty("start_time") val start_time: String?)
+    data class Broadcast(@JsonProperty("day_of_the_week") val dayOfTheWeek: String?, @JsonProperty("start_time") val startTime: String?)
 
     override suspend fun library(auth : AuthData?): LibraryMetadata? {
         val list = getMalAnimeListSmart(auth ?: return null)?.groupBy {
@@ -462,7 +494,7 @@ class MALApi : SyncAPI() {
     }
 
     data class ResponseToken(
-        @JsonProperty("token_type") val token_type: String,
+        @JsonProperty("token_type") val tokenType: String,
         @JsonProperty("expires_in") val expiresIn: Int,
         @JsonProperty("access_token") val accessToken: String,
         @JsonProperty("refresh_token") val refreshToken: String,
@@ -474,6 +506,11 @@ class MALApi : SyncAPI() {
         @JsonProperty("picture") val picture: String?,
     )
 
+    data class MalMainPicture(
+        @JsonProperty("large") val large: String?,
+        @JsonProperty("medium") val medium: String?,
+    )
+
     data class SmallMalAnime(
         @JsonProperty("id") val id: Int,
         @JsonProperty("my_list_status") val myListStatus: MalStatus?,
@@ -481,9 +518,10 @@ class MALApi : SyncAPI() {
 
     data class MalSearchNode(@JsonProperty("node") val node: Node)
     data class MalSearch(@JsonProperty("data") val data: List<MalSearchNode>)
+    data class MalTitleHolder(val status: MalStatus, val id: Int, val name: String)
     data class MalStatus(
         @JsonProperty("status") val status: String,
         @JsonProperty("score") val score: Int,
-        @JsonProperty("num_episodes_watched") val num_episodes_watched: Int,
+        @JsonProperty("num_episodes_watched") val numEpisodesWatched: Int,
     )
 }

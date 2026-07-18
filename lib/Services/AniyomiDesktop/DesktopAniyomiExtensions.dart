@@ -385,8 +385,42 @@ class DesktopAniyomiExtensions extends DesktopExtensionBase {
       }
 
       final outJarPath = p.join(extDir, '$pkgName.jar');
-      Logger.log("Converting Aniyomi APK to JAR...");
-      await RuntimeTools().runDex2Jar(classesDex, outJarPath);
+      Logger.log("Converting Aniyomi APK to JAR and bundling assets...");
+      
+      final tempClassesJarPath = p.join(extDir, '${pkgName}_classes.jar');
+      await RuntimeTools().runDex2Jar(classesDex, tempClassesJarPath);
+
+      if (File(tempClassesJarPath).existsSync()) {
+        await extractZip(tempClassesJarPath, tempExtractedPath);
+        try {
+          File(tempClassesJarPath).deleteSync();
+        } catch (_) {}
+      }
+
+      final archive = Archive();
+      final dir = Directory(tempExtractedPath);
+      if (dir.existsSync()) {
+        final list = dir.listSync(recursive: true);
+        for (final entity in list) {
+          if (entity is File) {
+            final relPath = p.relative(entity.path, from: tempExtractedPath);
+            if (relPath == 'AndroidManifest.xml' ||
+                relPath == 'resources.arsc' ||
+                relPath.endsWith('.dex') ||
+                relPath.startsWith('res/')) {
+              continue;
+            }
+            final bytes = entity.readAsBytesSync();
+            archive.addFile(ArchiveFile(relPath, bytes.length, bytes));
+          }
+        }
+      }
+      
+      final zipData = ZipEncoder().encode(archive);
+      if (zipData == null) {
+        throw Exception("Failed to encode packaged JAR for $pkgName");
+      }
+      File(outJarPath).writeAsBytesSync(zipData);
 
       if (aSource.iconUrl != null) {
         setVal('desktop_ext_icon_$pkgName', aSource.iconUrl);

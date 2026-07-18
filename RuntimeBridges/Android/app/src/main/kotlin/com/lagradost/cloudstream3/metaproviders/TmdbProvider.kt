@@ -71,7 +71,7 @@ open class TmdbProvider : MainAPI() {
     open val disableSeasonZero = true
 
     override val hasMainPage = true
-    open val providerType = ProviderType.MetaProvider
+    override val providerType = ProviderType.MetaProvider
 
     // Fuck it, public private api key because github actions won't co-operate.
     // Please no stealy.
@@ -236,7 +236,7 @@ open class TmdbProvider : MainAPI() {
         }
     }
 
-    open suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
 
         // SAME AS DISCOVER IT SEEMS
 //        val popularSeries = tmdb.tvService().popular(page, "en-US").execute().body()?.results?.map {

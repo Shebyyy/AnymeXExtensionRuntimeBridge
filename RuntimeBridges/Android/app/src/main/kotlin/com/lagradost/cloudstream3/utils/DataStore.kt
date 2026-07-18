@@ -6,8 +6,6 @@ import java.util.Calendar
 import java.util.Date
 import java.util.GregorianCalendar
 
-
-
 import com.lagradost.cloudstream3.mvvm.logError
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty
@@ -61,8 +59,11 @@ object DataStore {
         return appContext?.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     }
 
-    /** Called by plugins as context.getSharedPrefs() or DataStore.run { context.getSharedPrefs() } */
     fun Context.getSharedPrefs(): SharedPreferences {
+        return getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    }
+
+    fun Context.getDefaultSharedPrefs(): SharedPreferences {
         return getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     }
 
@@ -178,10 +179,6 @@ object DataStore {
     fun <T : Any> setKeyClass(path: String, value: T) { appContext?.setKey(path, value) }
 
     fun removeKeys(folder: String): Int? = appContext?.removeKeys(folder)
-
-    fun getDefaultSharedPrefs(context: Context): SharedPreferences {
-        return context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-    }
 
     fun Int.toYear(): Date = GregorianCalendar.getInstance().also { it.set(Calendar.YEAR, this) }.time
 }

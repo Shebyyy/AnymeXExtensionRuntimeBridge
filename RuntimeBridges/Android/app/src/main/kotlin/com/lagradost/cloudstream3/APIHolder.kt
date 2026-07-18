@@ -29,6 +29,15 @@ object APIHolder {
         apis.remove(provider)
     }
 
+    fun getApiFromNameNull(apiName: String?): MainAPI? {
+        if (apiName == null) return null
+        return synchronized(apis) { apis.firstOrNull { it.name == apiName } }
+    }
+
+    fun getApiFromName(apiName: String?): MainAPI {
+        return getApiFromNameNull(apiName) ?: apis.firstOrNull() ?: throw IllegalStateException("No API found for name: $apiName")
+    }
+
     suspend fun getCaptchaToken(url: String, key: String, referer: String? = null): String? = null
     
     val unixTime: Long

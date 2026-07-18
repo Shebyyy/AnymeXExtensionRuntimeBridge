@@ -331,16 +331,29 @@ abstract class MainAPI {
 
     /**
      * A set of which ids the provider can open with getLoadUrl()
-     * If the set contains Any.Imdb then getLoadUrl() can be started with
-     * an Imdb class which inherits from SyncId.
-     *
-     * getLoadUrl() is then used to get page url based on that ID.
-     *
-     * Example:
-     * "tt6723592" -> getLoadUrl(ImdbSyncId("tt6723592")) -> "mainUrl/imdb/tt6723592" -> load("mainUrl/imdb/tt6723592")
-     *
-     * This is used to launch pages from personal lists or recommendations using IDs.
      **/
+    open val supportedSyncNames = setOf<com.lagradost.cloudstream3.syncproviders.SyncIdName>()
+
+    open val supportedTypes = setOf(
+        TvType.Movie,
+        TvType.TvSeries,
+        TvType.Cartoon,
+        TvType.Anime,
+        TvType.OVA,
+    )
+
+    open val vpnStatus = VPNStatus.None
+    open val providerType = ProviderType.DirectProvider
+
+    open val mainPage = listOf(MainPageData("", "", false))
+
+    open suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest,
+    ): HomePageResponse? {
+        throw NotImplementedError()
+    }
+
 
     /** Paginated search, starts with page: 1 */
     open suspend fun search(query: String, page: Int): SearchResponseList? {
@@ -412,7 +425,7 @@ abstract class MainAPI {
      * Get the load() url based on a sync ID like IMDb or MAL.
      * Only contains SyncIds based on supportedSyncUrls.
      **/
-    open suspend fun getLoadUrl(name: Any, id: String): String? {
+    open suspend fun getLoadUrl(name: com.lagradost.cloudstream3.syncproviders.SyncIdName, id: String): String? {
         return null
     }
 }

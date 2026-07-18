@@ -25,24 +25,10 @@ abstract class SyncAPI : AuthAPI() {
 
     open fun urlToId(url: String): String? = null
 
-    interface SyncSearchResult : SearchResponse {
-        override val name: String
-        override val apiName: String
-        var syncId: String
-        override val url: String
-        override var posterUrl: String?
-        override var type: TvType?
-        override var quality: SearchQuality?
-        override var posterHeaders: Map<String, String>?
-        override var id: Int?
-        override var score: Score?
-    }
-    
-    // Concrete implementation for ease of use in desktop
-    data class SyncSearchResultImpl(
+    data class SyncSearchResult(
         override val name: String,
         override val apiName: String,
-        override var syncId: String,
+        var syncId: String,
         override val url: String,
         override var posterUrl: String?,
         override var type: TvType? = null,
@@ -50,7 +36,7 @@ abstract class SyncAPI : AuthAPI() {
         override var posterHeaders: Map<String, String>? = null,
         override var id: Int? = null,
         override var score: Score? = null,
-    ) : SyncSearchResult
+    ) : SearchResponse
 
     abstract class AbstractSyncStatus {
         abstract var status: SyncWatchType
