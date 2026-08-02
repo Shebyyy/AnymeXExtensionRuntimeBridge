@@ -13,9 +13,8 @@ on:
         type: boolean
         default: false
       release_tag:
-        description: 'Release tag (only used if create_release is true)'
+        description: 'Custom release tag (leave empty to auto-increment from latest)'
         required: false
-        default: 'ios-runtime-latest'
   push:
     branches: [ "ios-bridge" ]
     paths:
@@ -364,16 +363,48 @@ jobs:
           ls -lh package/ios/libs/*.a 2>/dev/null || echo "No .a files"
           ls -lh package/ios/libs/*.jar 2>/dev/null || echo "No .jar files"
 
-      - name: Create version info
+      - name: Determine next version tag
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TIMESTAMP=$(date -u +'%Y%m%d%H%M')
-          COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
-          echo "PACKAGE_VERSION=ios-runtime-${TIMESTAMP}-${COMMIT_SHA}" >> $GITHUB_ENV
+          # Query the latest release to find the current version tag
+          LATEST_TAG=$(curl -sf "https://api.github.com/repos/${{ github.repository }}/releases/latest" 2>/dev/null \
+            | grep -oP '"tag_name"\s*:\s*"\K[^"]+' || echo "")
+
+          echo "Latest release tag: $LATEST_TAG"
+
+          if echo "$LATEST_TAG" | grep -qP '^v\d+\.\d+\.\d+$'; then
+            # Parse existing version
+            MAJOR=$(echo "$LATEST_TAG" | sed 's/v\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)/\1/')
+            MINOR=$(echo "$LATEST_TAG" | sed 's/v\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)/\2/')
+            PATCH=$(echo "$LATEST_TAG" | sed 's/v\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\)/\3/')
+
+            # Increment: PATCH 0-9, then carry to MINOR; MINOR 0-9, then carry to MAJOR
+            PATCH=$((PATCH + 1))
+            if [ "$PATCH" -gt 9 ]; then
+              PATCH=0
+              MINOR=$((MINOR + 1))
+              if [ "$MINOR" -gt 9 ]; then
+                MINOR=0
+                MAJOR=$((MAJOR + 1))
+              fi
+            fi
+          else
+            # No valid previous release — start at v0.0.1
+            MAJOR=0
+            MINOR=0
+            PATCH=1
+          fi
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "New version tag: $NEW_TAG"
 
       - name: Create tarball
         run: |
           cd package
-          tar czf "../anymex-ios-runtime-${GITHUB_SHA:0:8}.tar.gz" ios/
+          tar czf "../anymex-ios-runtime-${{ steps.version.outputs.tag }}.tar.gz" ios/
           cd ..
           ls -lh anymex-ios-runtime-*.tar.gz
 
@@ -414,14 +445,18 @@ jobs:
         if: ${{ github.event.inputs.create_release == 'true' || github.event_name == 'push' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.release_tag || format('ios-runtime-{0}', github.sha) }}
-          name: "AnymeX iOS Runtime (${GITHUB_SHA:0:8})"
+          tag_name: ${{ github.event.inputs.release_tag || steps.version.outputs.tag }}
+          name: "AnymeX iOS Runtime ${{ steps.version.outputs.tag }}"
           body: |
-            ## AnymeX iOS Runtime Package
+            ## AnymeX iOS Runtime ${{ steps.version.outputs.tag }}
 
             Prebuilt **OpenJDK Zero VM** static libraries for iOS ARM64 + **iOS Runtime JAR**.
 
-            ### What's included
+            ### Assets
+            - `anymex_ios_runtime.jar` — Runtime JAR (downloaded by the app at `releases/latest/download/anymex_ios_runtime.jar`)
+            - `anymex-ios-runtime-${{ steps.version.outputs.tag }}.tar.gz` — Full package (libs + JAR + headers)
+
+            ### What's in the tarball
             - `libjvm.a` — OpenJDK Zero VM interpreter (static, ARM64)
             - `libjava.a`, `libnet.a`, `libnio.a`, `libzip.a` — Java native libs
             - `libffi.a` — Foreign Function Interface
@@ -430,13 +465,10 @@ jobs:
             - `classes/` — JDK runtime JARs needed by the Zero interpreter
             - JNI headers for iOS
 
-            ### Usage
-            1. Extract `ios/` into the `AnymeXExtensionRuntimeBridge` plugin directory
-            2. The podspec will automatically link the static libraries
-            3. Build the Flutter app with `flutter build ios --release --no-codesign`
-
             ### Commit
             Built from `${{ github.sha }}`
-          files: anymex-ios-runtime-*.tar.gz
+          files: |
+            package/ios/libs/anymex_ios_runtime.jar
+            anymex-ios-runtime-*.tar.gz
           draft: false
           prerelease: false
