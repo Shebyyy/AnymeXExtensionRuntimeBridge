@@ -43,11 +43,26 @@ jobs:
       - name: Checkout AnymeXExtensionRuntimeBridge
         uses: actions/checkout@v4
 
-      - name: Set up JDK 24 (boot JDK)
-        uses: actions/setup-java@v4
+      - name: Cache JDK 26 EA (boot JDK for openjdk/mobile)
+        id: cache-boot-jdk
+        uses: actions/cache@v4
         with:
-          distribution: 'temurin'
-          java-version: '24'
+          path: ~/boot-jdk
+          key: boot-jdk-26-ea-macos-arm64-v1
+
+      - name: Download JDK 26 EA (boot JDK)
+        if: steps.cache-boot-jdk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/boot-jdk
+          curl -L -o ~/boot-jdk/jdk26.tar.gz \
+            'https://download.java.net/java/early_access/jdk/26/29/GPL/openjdk-26-ea+29_macos-aarch64_bin.tar.gz'
+          tar xzf ~/boot-jdk/jdk26.tar.gz -C ~/boot-jdk --strip-components=1
+          rm ~/boot-jdk/jdk26.tar.gz
+          echo "BOOT_JDK=$HOME/boot-jdk/Contents/Home" >> $GITHUB_ENV
+
+      - name: Set BOOT_JDK from cache
+        if: steps.cache-boot-jdk.outputs.cache-hit == 'true'
+        run: echo "BOOT_JDK=$HOME/boot-jdk/Contents/Home" >> $GITHUB_ENV
 
       - name: Install build dependencies
         run: |
@@ -93,6 +108,7 @@ jobs:
         working-directory: openjdk-mobile
         run: |
           sh configure \
+            --with-boot-jdk=$BOOT_JDK \
             --disable-warnings-as-errors \
             --openjdk-target=aarch64-macos-ios \
             --with-libffi-include=$HOME/mobile-support/libffi/include \
