@@ -136,8 +136,8 @@ jobs:
             --with-boot-jdk=$BOOT_JDK \
             --disable-warnings-as-errors \
             --openjdk-target=aarch64-macos-ios \
-            --with-libffi-include=$HOME/mobile-support/libffi/include \
-            --with-libffi-lib=$HOME/mobile-support/libffi/libs \
+            --with-libffi-include=$HOME/mobile-support/support/libffi/include \
+            --with-libffi-lib=$HOME/mobile-support/support/libffi/libs \
             --with-cups-include=$HOME/mobile-support/support/cups-2.3.6 \
             --with-sysroot=$XCODE_PATH/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk \
             --with-native-debug-symbols=none \
@@ -185,7 +185,7 @@ jobs:
           cp "$BUILD_DIR/lib/libfdlibm.a" ios-libs/ 2>/dev/null || true
 
           # Copy libffi from mobile-support
-          cp "$HOME/mobile-support/libffi/libs/lib/libffi.a" ios-libs/ 2>/dev/null || true
+          cp "$HOME/mobile-support/support/libffi/libs/libffi.a" ios-libs/ 2>/dev/null || true
 
           # Copy JDK runtime JARs (needed by Zero interpreter at runtime)
           mkdir -p ios-libs/classes
@@ -265,6 +265,7 @@ jobs:
       - name: Build iOS Runtime JAR (includes IosExtensionLoader)
         run: |
           # Copy iOS Java source into Desktop source set for joint compilation
+          mkdir -p RuntimeBridges/Desktop/src/main/java/com/anymex/ios/
           cp RuntimeBridges/iOS/src/main/java/com/anymex/ios/IosExtensionLoader.java \
              RuntimeBridges/Desktop/src/main/java/com/anymex/ios/
 
