@@ -117,7 +117,7 @@ class AnymeXRuntimeBridge {
     final bridgeFile = File(bridgePath);
     bool exists = await bridgeFile.exists();
 
-    if (!Platform.isAndroid) {
+    if (!Platform.isAndroid && !Platform.isIOS) {
       final jreDir = await paths.jreDir;
       exists = exists && await jreDir.exists();
     }
@@ -294,7 +294,7 @@ class AnymeXRuntimeBridge {
     final bridgeFile = File(_cachedBridgePath!);
     if (!bridgeFile.existsSync()) return false;
 
-    if (!Platform.isAndroid && _cachedJreDirPath != null) {
+    if (!Platform.isAndroid && !Platform.isIOS && _cachedJreDirPath != null) {
       final jreDir = Directory(_cachedJreDirPath!);
       if (!jreDir.existsSync()) return false;
     }
@@ -328,7 +328,7 @@ class AnymeXRuntimeBridge {
   }
 
   static Future<bool> isLoadedFromStorage() async {
-    if (!Platform.isAndroid) return false;
+    if (!Platform.isAndroid && !Platform.isIOS) return false;
     final savedPath = getVal<String>('runtime_host_path');
     if (savedPath == null || savedPath.isEmpty) return false;
     final defaultPath = await RuntimePaths().bridgePath;
