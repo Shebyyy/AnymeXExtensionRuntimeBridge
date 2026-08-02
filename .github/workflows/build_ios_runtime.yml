@@ -48,36 +48,47 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/boot-jdk
-          key: boot-jdk-26-ea-macos-arm64-v2
+          key: boot-jdk-26-macos-arm64-v3
 
-      - name: Download JDK 26 EA (boot JDK)
+      - name: Download JDK 26 (boot JDK)
         if: steps.cache-boot-jdk.outputs.cache-hit != 'true'
         run: |
-          mkdir -p ~/boot-jdk
+          mkdir -p ~/boot-jdk-tmp
           # Scrape the jdk.java.net page to find the macOS ARM64 tar.gz URL (GA or EA)
           DOWNLOAD_PAGE=$(curl -sL 'https://jdk.java.net/26/')
           JDK_URL=$(echo "$DOWNLOAD_PAGE" | grep -oE 'https://download\.java\.net/java/(GA|early_access)/jdk[^/]*/[^"]+macos-aarch64_bin\.tar\.gz' | head -1)
           if [ -z "$JDK_URL" ]; then
-            echo "ERROR: Could not find JDK 26 EA macOS ARM64 download URL"
+            echo "ERROR: Could not find JDK 26 macOS ARM64 download URL"
             echo "Page content (first 2000 chars):"
             echo "$DOWNLOAD_PAGE" | head -c 2000
             exit 1
           fi
           echo "Downloading: $JDK_URL"
-          curl -L -o ~/boot-jdk/jdk26.tar.gz "$JDK_URL"
-          FILE_SIZE=$(stat -f%z ~/boot-jdk/jdk26.tar.gz 2>/dev/null || stat -c%s ~/boot-jdk/jdk26.tar.gz)
+          curl -L -o ~/boot-jdk-tmp/jdk26.tar.gz "$JDK_URL"
+          FILE_SIZE=$(stat -f%z ~/boot-jdk-tmp/jdk26.tar.gz 2>/dev/null || stat -c%s ~/boot-jdk-tmp/jdk26.tar.gz)
           if [ "$FILE_SIZE" -lt 10000000 ]; then
-            echo "ERROR: Downloaded file is only $FILE_SIZE bytes (expected 100MB+), likely an error page"
-            head -c 500 ~/boot-jdk/jdk26.tar.gz
+            echo "ERROR: Downloaded file is only $FILE_SIZE bytes (expected 100MB+)"
+            head -c 500 ~/boot-jdk-tmp/jdk26.tar.gz
             exit 1
           fi
-          tar xzf ~/boot-jdk/jdk26.tar.gz -C ~/boot-jdk --strip-components=1
-          rm ~/boot-jdk/jdk26.tar.gz
-          echo "BOOT_JDK=$HOME/boot-jdk/Contents/Home" >> $GITHUB_ENV
+          tar xzf ~/boot-jdk-tmp/jdk26.tar.gz -C ~/boot-jdk-tmp
+          rm ~/boot-jdk-tmp/jdk26.tar.gz
+          # Find Contents/Home wherever the tar put it
+          BOOT_HOME=$(find ~/boot-jdk-tmp -name "Home" -type d -path "*/Contents/Home" | head -1)
+          if [ -z "$BOOT_HOME" ]; then
+            echo "ERROR: Could not find Contents/Home in extracted JDK"
+            echo "Extracted structure:"
+            find ~/boot-jdk-tmp -maxdepth 4 -type d | head -30
+            exit 1
+          fi
+          echo "Found boot JDK at: $BOOT_HOME"
+          echo "BOOT_JDK=$BOOT_HOME" >> $GITHUB_ENV
+          # Rename to known location for caching
+          mv "$BOOT_HOME" ~/boot-jdk
 
       - name: Set BOOT_JDK from cache
         if: steps.cache-boot-jdk.outputs.cache-hit == 'true'
-        run: echo "BOOT_JDK=$HOME/boot-jdk/Contents/Home" >> $GITHUB_ENV
+        run: echo "BOOT_JDK=$HOME/boot-jdk" >> $GITHUB_ENV
 
       - name: Install build dependencies
         run: |
