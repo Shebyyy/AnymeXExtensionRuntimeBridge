@@ -54,9 +54,9 @@ jobs:
         if: steps.cache-boot-jdk.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/boot-jdk
-          # Scrape the jdk.java.net EA page to find the latest macOS ARM64 tar.gz URL
+          # Scrape the jdk.java.net page to find the macOS ARM64 tar.gz URL (GA or EA)
           DOWNLOAD_PAGE=$(curl -sL 'https://jdk.java.net/26/')
-          JDK_URL=$(echo "$DOWNLOAD_PAGE" | grep -oE 'https://download\.java\.net/java/early_access/jdk/26/[0-9]+/GPL/openjdk-26-ea\+[0-9]+_macos-aarch64_bin\.tar\.gz' | head -1)
+          JDK_URL=$(echo "$DOWNLOAD_PAGE" | grep -oE 'https://download\.java\.net/java/(GA|early_access)/jdk[^/]*/[^"]+macos-aarch64_bin\.tar\.gz' | head -1)
           if [ -z "$JDK_URL" ]; then
             echo "ERROR: Could not find JDK 26 EA macOS ARM64 download URL"
             echo "Page content (first 2000 chars):"
