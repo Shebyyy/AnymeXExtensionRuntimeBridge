@@ -181,6 +181,14 @@ class AnymeXRuntimeBridge {
 
   /// Checks if the AnymeXBridgeHost is already loaded into memory.
   static Future<bool> isLoaded() async {
+    // On iOS the JVM (libjvm.a) and runtime JAR are embedded in the app
+    // at build time — the plugin is always "loaded".
+    if (Platform.isIOS) {
+      if (!controller.isReady.value) {
+        controller.setReady(true);
+      }
+      return true;
+    }
     if (Platform.isAndroid) {
       try {
         final result = await _channel.invokeMethod<bool>('isLoaded');
@@ -290,6 +298,10 @@ class AnymeXRuntimeBridge {
   }
 
   static bool get isPluginInstalled {
+    // On iOS the runtime (JVM + bridge JAR) is compiled into the app binary
+    // and bundled as a resource — it is always installed.
+    if (Platform.isIOS) return true;
+
     if (_cachedBridgePath == null) return false;
     final bridgeFile = File(_cachedBridgePath!);
     if (!bridgeFile.existsSync()) return false;
