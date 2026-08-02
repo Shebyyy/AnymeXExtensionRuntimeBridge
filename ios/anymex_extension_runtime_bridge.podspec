@@ -53,7 +53,7 @@ Pod::Spec.new do |s|
     'GCC_WARN_ABOUT_RETURN_TYPE' => 'YES',
     'GCC_WARN_UNINITIALIZED_AUTOS' => 'YES_AGGRESSIVE',
     'OTHER_LDFLAGS' => '$(inherited) -ObjC -lstdc++ -lc++',
-    'HEADER_SEARCH_PATHS' => '$(inherited) ${PODS_TARGET_SRCROOT}/include ${PODS_TARGET_SRCROOT}/Classes',
+    'HEADER_SEARCH_PATHS' => '$(inherited) ${PODS_TARGET_SRCROOT}/Classes',
     'LIBRARY_SEARCH_PATHS' => '$(inherited) ${PODS_TARGET_SRCROOT}/libs',
   }
 end

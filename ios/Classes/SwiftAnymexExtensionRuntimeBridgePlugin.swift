@@ -807,7 +807,8 @@ public func anymex_ios_jvm_get_last_error() -> UnsafePointer<CChar>? {
                     env.pointee.functions.pointee.DeleteLocalRef(env, excCls)
                     env.pointee.functions.pointee.DeleteLocalRef(env, exc)
 
-                    let errorJson = "{\"error\":\(msg.map { "\"\($0)\"" } ?? "\"unknown\"},\"type\":\"java_exception\"}"
+                    let escapedMsg = (msg ?? "unknown").replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+                    let errorJson = "{\"error\":\"\(escapedMsg)\",\"type\":\"java_exception\"}"
                     return strdup(errorJson)
                 }
                 env.pointee.functions.pointee.DeleteLocalRef(env, excCls)
