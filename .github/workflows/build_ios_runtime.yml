@@ -138,7 +138,7 @@ jobs:
             --openjdk-target=aarch64-macos-ios \
             --with-libffi-include=$HOME/mobile-support/libffi/include \
             --with-libffi-lib=$HOME/mobile-support/libffi/libs \
-            --with-cups-include=$HOME/mobile-support/cups-2.3.6 \
+            --with-cups-include=$HOME/mobile-support/support/cups-2.3.6 \
             --with-sysroot=$XCODE_PATH/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk \
             --with-native-debug-symbols=none \
             --with-jvm-features=zero \
@@ -262,47 +262,36 @@ jobs:
               -o RuntimeBridges/Desktop/gradle/wrapper/gradle-wrapper.jar
           fi
 
+      - name: Build iOS Runtime JAR (includes IosExtensionLoader)
+        run: |
+          # Copy iOS Java source into Desktop source set for joint compilation
+          cp RuntimeBridges/iOS/src/main/java/com/anymex/ios/IosExtensionLoader.java \
+             RuntimeBridges/Desktop/src/main/java/com/anymex/ios/
+
       - name: Build Desktop bridge JAR (shadow/fat JAR)
         working-directory: RuntimeBridges/Desktop
         run: |
           chmod +x gradlew 2>/dev/null || true
           ./gradlew shadowJar --no-daemon
 
-      - name: Compile IosExtensionLoader.java
+      - name: Build iOS Runtime JAR
         run: |
-          # Compile the iOS Java entry point against the desktop fat JAR
-          mkdir -p build/ios-classes
-          javac \
-            -cp "RuntimeBridges/Desktop/build/libs/desktop_bridge.jar" \
-            -d build/ios-classes \
-            RuntimeBridges/iOS/src/main/java/com/anymex/ios/IosExtensionLoader.java
-
-      - name: Build iOS Runtime JAR (fat JAR)
-        run: |
-          # Create a fat JAR: desktop code + iOS loader + all dependencies
+          # Repackage desktop fat JAR with iOS main class
           mkdir -p build/ios-runtime
           cd build/ios-runtime
 
-          # Extract desktop bridge fat JAR (contains all Kotlin code + deps)
+          # Extract desktop bridge fat JAR
           jar xf ../../RuntimeBridges/Desktop/build/libs/desktop_bridge.jar
           rm -rf META-INF/MANIFEST.MF
 
-          # Add compiled iOS Java classes
-          cp -r ../ios-classes/* .
-
-          # Set the main class to our iOS loader
+          # Set the main class to iOS loader
           echo "Main-Class: com.anymex.ios.IosExtensionLoader" > META-INF/MANIFEST.MF
 
-          # Repackage into the iOS runtime JAR
+          # Repackage
           jar cfm anymex_ios_runtime.jar META-INF/MANIFEST.MF .
 
-          # Verify
-          echo "=== JAR contents (first 50 entries) ==="
-          jar tf anymex_ios_runtime.jar | head -50
           echo "=== JAR size ==="
           ls -lh anymex_ios_runtime.jar
-
-          # Verify IosExtensionLoader is present
           jar tf anymex_ios_runtime.jar | grep IosExtensionLoader
 
       - name: Upload iOS Runtime JAR
