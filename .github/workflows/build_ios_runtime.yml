@@ -1,0 +1,404 @@
+name: Build iOS Runtime (OpenJDK Zero VM + Runtime JAR)
+
+on:
+  workflow_dispatch:
+    inputs:
+      openjdk_mobile_ref:
+        description: 'openjdk/mobile Git ref (branch/tag/SHA)'
+        required: false
+        default: 'master'
+      create_release:
+        description: 'Create a GitHub Release with artifacts'
+        required: false
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Release tag (only used if create_release is true)'
+        required: false
+        default: 'ios-runtime-latest'
+  push:
+    branches: [ "main", "master" ]
+    paths:
+      - 'ios/**'
+      - 'RuntimeBridges/**'
+      - 'lib/Runtime/**'
+      - 'lib/Services/**'
+      - '.github/workflows/build_ios_runtime.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  # ==========================================================================
+  # Job 1: Build OpenJDK Zero VM static libraries for iOS ARM64
+  # ==========================================================================
+  build_openjdk_ios:
+    name: Build OpenJDK Zero VM (iOS ARM64)
+    runs-on: macos-14
+    timeout-minutes: 360
+    outputs:
+      build-version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout AnymeXExtensionRuntimeBridge
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 24 (boot JDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+
+      - name: Install build dependencies
+        run: |
+          brew install autoconf cmake
+          echo "XCODE_PATH=$(xcode-select -p)" >> $GITHUB_ENV
+
+      - name: Cache OpenJDK Mobile source
+        id: cache-jdk-source
+        uses: actions/cache@v4
+        with:
+          path: openjdk-mobile
+          key: openjdk-mobile-src-${{ github.event.inputs.openjdk_mobile_ref || 'master' }}
+
+      - name: Clone OpenJDK Mobile
+        if: steps.cache-jdk-source.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch ${{ github.event.inputs.openjdk_mobile_ref || 'master' }} \
+            https://github.com/openjdk/mobile.git openjdk-mobile
+
+      - name: Cache mobile-support libraries
+        id: cache-mobile-support
+        uses: actions/cache@v4
+        with:
+          path: ~/mobile-support
+          key: mobile-support-20250106
+
+      - name: Download mobile-support (libffi + cups prebuilt for iOS)
+        if: steps.cache-mobile-support.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o mobile-support.zip https://download2.gluonhq.com/mobile/mobile-support-20250106.zip
+          unzip mobile-support.zip -d ~/mobile-support
+          rm mobile-support.zip
+
+      - name: Cache OpenJDK build output
+        id: cache-jdk-build
+        uses: actions/cache@v4
+        with:
+          path: openjdk-mobile/build
+          key: jdk-ios-arm64-zero-${{ github.event.inputs.openjdk_mobile_ref || 'master' }}-v2
+
+      - name: Configure OpenJDK for iOS ARM64 (Zero VM)
+        if: steps.cache-jdk-build.outputs.cache-hit != 'true'
+        working-directory: openjdk-mobile
+        run: |
+          sh configure \
+            --disable-warnings-as-errors \
+            --openjdk-target=aarch64-macos-ios \
+            --with-libffi-include=$HOME/mobile-support/libffi/include \
+            --with-libffi-lib=$HOME/mobile-support/libffi/libs \
+            --with-cups-include=$HOME/mobile-support/cups-2.3.6 \
+            --with-sysroot=$XCODE_PATH/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk \
+            --with-native-debug-symbols=none \
+            --disable-hotspot-gtest \
+            --with-jvm-features=zero \
+            --disable-cds \
+            --disable-javac-server
+
+      - name: Build static libraries image
+        if: steps.cache-jdk-build.outputs.cache-hit != 'true'
+        working-directory: openjdk-mobile
+        run: |
+          make CONF=ios-aarch64-zero-release static-libs-image LOG=cmdlines
+
+      - name: Extract version metadata
+        id: meta
+        working-directory: openjdk-mobile
+        run: |
+          VERSION=$(cat make/autoconf/version-numbers 2>/dev/null | head -5 || echo "unknown")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "OpenJDK Mobile version info:"
+          cat make/autoconf/version-numbers 2>/dev/null | head -5 || true
+
+      - name: Collect static libraries
+        run: |
+          mkdir -p ios-libs
+          BUILD_DIR="openjdk-mobile/build/ios-aarch64-zero-release/images/static-libs"
+
+          if [ ! -d "$BUILD_DIR/lib" ]; then
+            echo "ERROR: static-libs image not found at $BUILD_DIR"
+            ls -la openjdk-mobile/build/ios-aarch64-zero-release/images/ 2>/dev/null || true
+            exit 1
+          fi
+
+          # Copy all static .a libraries
+          cp "$BUILD_DIR/lib/zero/libjvm.a" ios-libs/ 2>/dev/null || { echo "Missing libjvm.a"; exit 1; }
+          cp "$BUILD_DIR/lib/libjava.a" ios-libs/ 2>/dev/null || true
+          cp "$BUILD_DIR/lib/libnet.a" ios-libs/ 2>/dev/null || true
+          cp "$BUILD_DIR/lib/libnio.a" ios-libs/ 2>/dev/null || true
+          cp "$BUILD_DIR/lib/libzip.a" ios-libs/ 2>/dev/null || true
+          cp "$BUILD_DIR/lib/libverify.a" ios-libs/ 2>/dev/null || true
+          cp "$BUILD_DIR/lib/libjimage.a" ios-libs/ 2>/dev/null || true
+          cp "$BUILD_DIR/lib/libjsig.a" ios-libs/ 2>/dev/null || true
+          cp "$BUILD_DIR/lib/libinstrument.a" ios-libs/ 2>/dev/null || true
+          cp "$BUILD_DIR/lib/libmanagement.a" ios-libs/ 2>/dev/null || true
+          cp "$BUILD_DIR/lib/libfdlibm.a" ios-libs/ 2>/dev/null || true
+
+          # Copy libffi from mobile-support
+          cp "$HOME/mobile-support/libffi/libs/lib/libffi.a" ios-libs/ 2>/dev/null || true
+
+          # Copy JDK runtime JARs (needed by Zero interpreter at runtime)
+          mkdir -p ios-libs/classes
+          cp $BUILD_DIR/lib/*.jar ios-libs/classes/ 2>/dev/null || true
+
+          # List what we got
+          echo "=== Static libraries collected ==="
+          ls -lh ios-libs/*.a
+          echo "=== Runtime JARs ==="
+          ls -lh ios-libs/classes/ 2>/dev/null || echo "(none)"
+
+          # Record library names for verification
+          echo "LIB_FILES=$(ls ios-libs/*.a | xargs -n1 basename | tr '\n' ',')" >> $GITHUB_ENV
+
+      - name: Collect JNI headers
+        run: |
+          mkdir -p ios-include
+          # Get JNI headers from the build
+          OPENJDK_INC="openjdk-mobile/build/ios-aarch64-zero-release/images/static-libs/include"
+          if [ -d "$OPENJDK_INC" ]; then
+            cp -r "$OPENJDK_INC/"* ios-include/
+          fi
+          # Fallback: use the jni.h from the plugin
+          if [ ! -f "ios-include/jni.h" ]; then
+            cp ios/include/jni.h ios-include/
+          fi
+          echo "=== JNI headers ==="
+          find ios-include -name '*.h' | head -20
+
+      - name: Verify static libraries are ARM64
+        run: |
+          echo "=== Verifying library architectures ==="
+          for lib in ios-libs/*.a; do
+            echo "--- $(basename $lib) ---"
+            lipo -info "$lib" 2>/dev/null || file "$lib"
+          done
+
+      - name: Upload OpenJDK iOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openjdk-ios-arm64-libs
+          path: |
+            ios-libs/*.a
+            ios-libs/classes/
+            ios-include/
+          retention-days: 30
+
+  # ==========================================================================
+  # Job 2: Build iOS Runtime JAR (IosExtensionLoader + Desktop Kotlin)
+  # ==========================================================================
+  build_runtime_jar:
+    name: Build iOS Runtime JAR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout AnymeXExtensionRuntimeBridge
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Desktop bridge JAR
+        working-directory: RuntimeBridges/Desktop
+        run: |
+          chmod +x gradlew 2>/dev/null || true
+          ./gradlew jar --no-daemon
+
+      - name: Compile IosExtensionLoader.java
+        run: |
+          # Compile the iOS Java entry point against the desktop JAR
+          mkdir -p build/ios-classes
+          javac \
+            -cp "RuntimeBridges/Desktop/build/libs/desktop_bridge.jar" \
+            -d build/ios-classes \
+            RuntimeBridges/iOS/src/main/java/com/anymex/ios/IosExtensionLoader.java
+
+      - name: Build iOS Runtime JAR (fat JAR)
+        run: |
+          # Create a fat JAR: desktop code + iOS loader + all dependencies
+          mkdir -p build/ios-runtime
+          cd build/ios-runtime
+
+          # Extract desktop bridge JAR (contains all Kotlin code + deps)
+          jar xf ../../RuntimeBridges/Desktop/build/libs/desktop_bridge.jar
+          rm -rf META-INF/MANIFEST.MF
+
+          # Add compiled iOS Java classes
+          cp -r ../ios-classes/* .
+
+          # Set the main class to our iOS loader
+          echo "Main-Class: com.anymex.ios.IosExtensionLoader" > META-INF/MANIFEST.MF
+
+          # Repackage into the iOS runtime JAR
+          jar cfm anymex_ios_runtime.jar META-INF/MANIFEST.MF .
+
+          # Verify
+          echo "=== JAR contents (first 50 entries) ==="
+          jar tf anymex_ios_runtime.jar | head -50
+          echo "=== JAR size ==="
+          ls -lh anymex_ios_runtime.jar
+
+          # Verify IosExtensionLoader is present
+          jar tf anymex_ios_runtime.jar | grep IosExtensionLoader
+
+      - name: Upload iOS Runtime JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-runtime-jar
+          path: build/ios-runtime/anymex_ios_runtime.jar
+          retention-days: 30
+
+  # ==========================================================================
+  # Job 3: Package everything and optionally create a release
+  # ==========================================================================
+  package_and_release:
+    name: Package & Release
+    needs: [build_openjdk_ios, build_runtime_jar]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout AnymeXExtensionRuntimeBridge
+        uses: actions/checkout@v4
+
+      - name: Download OpenJDK iOS static libs
+        uses: actions/download-artifact@v4
+        with:
+          name: openjdk-ios-arm64-libs
+          path: package/ios-libs
+
+      - name: Download iOS Runtime JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-runtime-jar
+          path: package/ios-libs
+
+      - name: Organize package structure
+        run: |
+          # Create the final directory layout that the podspec expects
+          mkdir -p package/ios/libs/classes
+
+          # Move static .a files
+          for f in package/ios-libs/*.a; do
+            if [ -f "$f" ]; then mv "$f" package/ios/libs/; fi
+          done
+
+          # Move runtime classes
+          if [ -d "package/ios-libs/classes" ]; then
+            cp -r package/ios-libs/classes/* package/ios/libs/classes/ 2>/dev/null || true
+          fi
+
+          # Move runtime JAR
+          if [ -f "package/ios-libs/anymex_ios_runtime.jar" ]; then
+            mv package/ios-libs/anymex_ios_runtime.jar package/ios/libs/
+          fi
+
+          # Move JNI headers
+          mkdir -p package/ios/include
+          for f in package/ios-libs/*.h; do
+            if [ -f "$f" ]; then mv "$f" package/ios/include/; fi
+          done
+          # Also copy any nested headers
+          if [ -d "package/ios-libs/darwin" ]; then
+            cp -r package/ios-libs/darwin package/ios/include/ 2>/dev/null || true
+          fi
+
+          echo "=== Final package structure ==="
+          find package/ios -type f | sort
+
+          echo "=== Library sizes ==="
+          ls -lh package/ios/libs/*.a 2>/dev/null || echo "No .a files"
+          ls -lh package/ios/libs/*.jar 2>/dev/null || echo "No .jar files"
+
+      - name: Create version info
+        run: |
+          TIMESTAMP=$(date -u +'%Y%m%d%H%M')
+          COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+          echo "PACKAGE_VERSION=ios-runtime-${TIMESTAMP}-${COMMIT_SHA}" >> $GITHUB_ENV
+
+      - name: Create tarball
+        run: |
+          cd package
+          tar czf "../anymex-ios-runtime-${GITHUB_SHA:0:8}.tar.gz" ios/
+          cd ..
+          ls -lh anymex-ios-runtime-*.tar.gz
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: anymex-ios-runtime-package
+          path: |
+            package/ios/
+            anymex-ios-runtime-*.tar.gz
+          retention-days: 90
+
+      - name: Commit libs to repo (ios/libs/ + ios/include/)
+        run: |
+          # Update ios/libs/ and ios/include/ in the repo so the podspec
+          # can find them without any manual download step.
+          rm -rf ios/libs ios/include
+          cp -r package/ios/libs ios/
+          cp -r package/ios/include ios/
+
+          # Check if there are changes to commit
+          if git diff --quiet ios/ && git ls-files --others --exclude-standard ios/ | grep -q .; then
+            : # untracked files exist
+          elif git diff --quiet ios/; then
+            echo "No changes to ios/ directory, skipping commit"
+            exit 0
+          fi
+
+          git add ios/libs/ ios/include/
+          git config user.name "Shebyyy"
+          git config user.email "83452219+Shebyyy@users.noreply.github.com"
+          git commit -m "chore: update prebuilt OpenJDK Zero VM libs for iOS ARM64"
+
+      - name: Push changes
+        run: git push
+
+      - name: Create GitHub Release
+        if: ${{ github.event.inputs.create_release == 'true' || github.event_name == 'push' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag || format('ios-runtime-{0}', github.sha) }}
+          name: "AnymeX iOS Runtime (${GITHUB_SHA:0:8})"
+          body: |
+            ## AnymeX iOS Runtime Package
+
+            Prebuilt **OpenJDK Zero VM** static libraries for iOS ARM64 + **iOS Runtime JAR**.
+
+            ### What's included
+            - `libjvm.a` — OpenJDK Zero VM interpreter (static, ARM64)
+            - `libjava.a`, `libnet.a`, `libnio.a`, `libzip.a` — Java native libs
+            - `libffi.a` — Foreign Function Interface
+            - `libverify.a`, `libjimage.a`, `libfdlibm.a` — Additional JVM libs
+            - `anymex_ios_runtime.jar` — Extension loader (IosExtensionLoader + Desktop Kotlin code)
+            - `classes/` — JDK runtime JARs needed by the Zero interpreter
+            - JNI headers for iOS
+
+            ### Usage
+            1. Extract `ios/` into the `AnymeXExtensionRuntimeBridge` plugin directory
+            2. The podspec will automatically link the static libraries
+            3. Build the Flutter app with `flutter build ios --release --no-codesign`
+
+            ### Commit
+            Built from `${{ github.sha }}`
+          files: anymex-ios-runtime-*.tar.gz
+          draft: false
+          prerelease: false
