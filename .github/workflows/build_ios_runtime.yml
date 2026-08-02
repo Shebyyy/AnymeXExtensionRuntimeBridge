@@ -210,7 +210,7 @@ jobs:
           fi
           # Fallback: use the jni.h from the plugin
           if [ ! -f "ios-include/jni.h" ]; then
-            cp ios/include/jni.h ios-include/
+            cp ios/Classes/jni.h ios-include/
           fi
           echo "=== JNI headers ==="
           find ios-include -name '*.h' | head -20
