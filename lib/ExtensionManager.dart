@@ -9,6 +9,12 @@ import 'Services/CloudStream/CloudStreamExtensions.dart';
 import 'Services/Mangayomi/MangayomiExtensions.dart';
 import 'Services/Sora/Models/Source.dart';
 import 'Services/Sora/SoraExtensions.dart';
+import 'Services/AniyomiDesktop/DesktopAniyomiExtensions.dart';
+import 'Services/CloudStreamDesktop/DesktopCloudStreamExtensions.dart';
+import 'Services/KotatsuDesktop/DesktopKotatsuExtensions.dart';
+import 'Services/AniyomiDesktop/IosAniyomiExtensions.dart';
+import 'Services/CloudStreamDesktop/IosCloudStreamExtensions.dart';
+import 'Services/KotatsuDesktop/IosKotatsuExtensions.dart';
 import 'anymex_extension_runtime_bridge.dart';
 
 import 'Settings/KvStore.dart';
@@ -70,6 +76,10 @@ class ExtensionManager extends GetxController {
             DesktopAniyomiExtensions(),
             DesktopCloudStreamExtensions(),
             DesktopKotatsuExtensions(),
+          ] else if (Platform.isIOS) ...[
+            IosAniyomiExtensions(),
+            IosCloudStreamExtensions(),
+            IosKotatsuExtensions(),
           ],
         ],
         insertAtStart: true,
@@ -356,15 +366,15 @@ Extension getSourceManager(Source source) {
   final em = Get.find<ExtensionManager>();
 
   if (source is ASource) {
-    return em.findById('aniyomi') ?? em.findById('aniyomi-desktop')!;
+    return em.findById('aniyomi') ?? em.findById('aniyomi-desktop') ?? em.findById('aniyomi-ios')!;
   }
   if (source is MSource) return em.findById('mangayomi')!;
   if (source is SSource) return em.findById('sora')!;
   if (source is CloudStreamSource) {
-    return em.findById('cloudstream') ?? em.findById('cloudstream-desktop')!;
+    return em.findById('cloudstream') ?? em.findById('cloudstream-desktop') ?? em.findById('cloudstream-ios')!;
   }
   if (source is KotatsuSource) {
-    return em.findById('kotatsu') ?? em.findById('kotatsu-desktop')!;
+    return em.findById('kotatsu') ?? em.findById('kotatsu-desktop') ?? em.findById('kotatsu-ios')!;
   }
 
   return em.findById('mangayomi')!;

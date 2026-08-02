@@ -48,7 +48,9 @@ class RuntimePaths {
     final dir = await toolsDir;
     final fileName = Platform.isAndroid
         ? 'anymex_runtime_host.apk'
-        : 'anymex_desktop_runtime.jar';
+        : Platform.isIOS
+            ? 'anymex_ios_runtime.jar'
+            : 'anymex_desktop_runtime.jar';
     return p.join(dir.path, fileName);
   }
 

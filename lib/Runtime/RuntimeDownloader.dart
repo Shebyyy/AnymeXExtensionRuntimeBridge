@@ -18,6 +18,8 @@ class RuntimeDownloader {
       "https://github.com/RyanYuuki/AnymeXExtensionRuntimeBridge/releases/latest/download/anymex_runtime_host.apk";
   static const String desktopJarUrl =
       "https://github.com/RyanYuuki/AnymeXExtensionRuntimeBridge/releases/latest/download/anymex_desktop_runtime.jar";
+  static const String iosJarUrl =
+      "https://github.com/RyanYuuki/AnymeXExtensionRuntimeBridge/releases/latest/download/anymex_ios_runtime.jar";
   static const String dex2jarUrl =
       "https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip";
 
@@ -74,7 +76,8 @@ class RuntimeDownloader {
       final toolsDir = await _paths.toolsDir;
       final dex2jarPath = await _paths.dex2jarPath;
 
-      final bool isDesktop = !Platform.isAndroid;
+      final bool isDesktop = !Platform.isAndroid && !Platform.isIOS;
+      final bool isIos = Platform.isIOS;
 
       bool needsBridge =
           (localApkPath == null) && (force || !await bridgeFile.exists());
@@ -87,7 +90,7 @@ class RuntimeDownloader {
 
       if (needsBridge) {
         currentFileIndex++;
-        final downloadUrl = customUrl ?? (Platform.isAndroid ? androidApkUrl : desktopJarUrl);
+        final downloadUrl = customUrl ?? (Platform.isAndroid ? androidApkUrl : Platform.isIOS ? iosJarUrl : desktopJarUrl);
         final label = Platform.isAndroid ? "Runtime APK" : "Bridge JAR";
         final stepPrefix = totalFiles > 1 ? "($currentFileIndex/$totalFiles) " : "";
         await _downloadFile(downloadUrl, bridgeFile.path, "$stepPrefix$label");
@@ -160,6 +163,11 @@ class RuntimeDownloader {
 
       if (Platform.isAndroid) {
         isLoaded = await AnymeXRuntimeBridge.loadAnymeXRuntimeHost(localApkPath ?? bridgeFile.path);
+      } else if (Platform.isIOS) {
+        // iOS JVM is initialized when IosExtensionBase.initialize() is called.
+        // For now just mark as ready — the actual JNI_CreateJavaVM happens
+        // when the first iOS extension manager initializes.
+        isLoaded = true;
       } else {
         isLoaded = true;
       }

@@ -15,7 +15,7 @@ class AnymeXRuntimeBridge {
   static final Map<String, String> cookiesMap = {};
   static final Map<String, String> userAgentMap = {};
 
-  static bool get isSupportedPlatform => !Platform.isIOS;
+  static bool get isSupportedPlatform => true; // iOS is now supported via embedded JVM
 
   static String? _cachedBridgePath;
   static String? _cachedToolsDirPath;
