@@ -17,7 +17,7 @@ on:
         required: false
         default: 'ios-runtime-latest'
   push:
-    branches: [ "main", "master" ]
+    branches: [ "ios" ]
     paths:
       - 'ios/**'
       - 'RuntimeBridges/**'
@@ -100,7 +100,6 @@ jobs:
             --with-cups-include=$HOME/mobile-support/cups-2.3.6 \
             --with-sysroot=$XCODE_PATH/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk \
             --with-native-debug-symbols=none \
-            --disable-hotspot-gtest \
             --with-jvm-features=zero \
             --disable-cds \
             --disable-javac-server
@@ -213,6 +212,14 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure Gradle wrapper exists
+        run: |
+          if [ ! -f RuntimeBridges/Desktop/gradle/wrapper/gradle-wrapper.jar ]; then
+            mkdir -p RuntimeBridges/Desktop/gradle/wrapper
+            curl -sL 'https://raw.githubusercontent.com/gradle/gradle/v8.5.0/gradle/wrapper/gradle-wrapper.jar' \
+              -o RuntimeBridges/Desktop/gradle/wrapper/gradle-wrapper.jar
+          fi
 
       - name: Build Desktop bridge JAR
         working-directory: RuntimeBridges/Desktop
@@ -370,7 +377,7 @@ jobs:
           git commit -m "chore: update prebuilt OpenJDK Zero VM libs for iOS ARM64"
 
       - name: Push changes
-        run: git push
+        run: git push origin HEAD:ios
 
       - name: Create GitHub Release
         if: ${{ github.event.inputs.create_release == 'true' || github.event_name == 'push' }}
