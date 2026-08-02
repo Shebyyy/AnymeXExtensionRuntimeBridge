@@ -113,13 +113,13 @@ public class IosExtensionLoader {
             }
         }
 
-        final JsonObject args;
+        JsonObject _args;
         try {
-            JsonObject parsed = gson.fromJson(argsJson, JsonObject.class);
-            args = (parsed != null) ? parsed : new JsonObject();
+            _args = gson.fromJson(argsJson, JsonObject.class);
         } catch (Exception e) {
-            args = new JsonObject();
+            _args = null;
         }
+        final JsonObject args = (_args != null) ? _args : new JsonObject();
 
         try {
             switch (method) {
