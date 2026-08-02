@@ -14,8 +14,11 @@ Pod::Spec.new do |s|
   s.author           = { 'Shebyyy' => '' }
   s.source           = { :path => '.' }
 
-  s.source_files = 'Classes/**/*'
-  s.public_header_files = 'Classes/**/*.h'
+  # Source files: Swift, ObjC, but NOT the include/ dir (that's for the module map only)
+  s.source_files = 'Classes/**/*.{swift,m,h}'
+  s.exclude_files = 'Classes/include/**', 'Classes/*Bridging-Header*'
+  # Only the plugin's own .h as public header (NOT jni.h — that's internal via module map)
+  s.public_header_files = 'Classes/AnymexExtensionRuntimeBridgePlugin.h'
 
   s.swift_version = '5.9'
 
