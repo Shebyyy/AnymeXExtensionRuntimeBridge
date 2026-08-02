@@ -27,6 +27,7 @@
 //
 
 import Foundation
+@_implementationOnly import JNI
 
 // MARK: - Global JVM State
 

@@ -42,10 +42,11 @@ Pod::Spec.new do |s|
   }
 
   # All xcconfig settings merged into one hash
+  # NOTE: Bridging headers are unsupported for framework targets.
+  # We use a C module map (Classes/include/JNI/module.modulemap) instead.
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    'SWIFT_OBJC_BRIDGING_HEADER' => '${PODS_TARGET_SRCROOT}/Classes/SwiftAnymexExtensionRuntimeBridgePlugin-Bridging-Header.h',
     'ENABLE_BITCODE' => 'NO',
     'CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES' => 'YES',
     'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited) JNI_STATIC_BUILD=1',
@@ -53,7 +54,8 @@ Pod::Spec.new do |s|
     'GCC_WARN_ABOUT_RETURN_TYPE' => 'YES',
     'GCC_WARN_UNINITIALIZED_AUTOS' => 'YES_AGGRESSIVE',
     'OTHER_LDFLAGS' => '$(inherited) -ObjC -lstdc++ -lc++',
-    'HEADER_SEARCH_PATHS' => '$(inherited) ${PODS_TARGET_SRCROOT}/Classes',
+    'HEADER_SEARCH_PATHS' => '$(inherited) ${PODS_TARGET_SRCROOT}/Classes ${PODS_TARGET_SRCROOT}/Classes/include/JNI',
     'LIBRARY_SEARCH_PATHS' => '$(inherited) ${PODS_TARGET_SRCROOT}/libs',
+    'SWIFT_INCLUDE_PATHS' => '$(inherited) ${PODS_TARGET_SRCROOT}/Classes/include/JNI',
   }
 end
