@@ -63,8 +63,8 @@ public class IosExtensionLoader {
         try {
             // Initialize all three sub-systems
             com.anymex.desktop.AniyomiSourceMethods.initialize();
-            com.anymex.desktop.cloudstream.CloudStreamExtensionLoader.initialize();
-            com.anymex.desktop.kotatsu.KotatsuExtensionLoader.initialize();
+            com.anymex.desktop.cloudstream.CloudStreamExtensionLoader.INSTANCE.initialize();
+            com.anymex.desktop.kotatsu.KotatsuExtensionLoader.INSTANCE.initialize();
             initialized = true;
             System.err.println("[IosExtensionLoader] Runtime initialized successfully.");
         } catch (Throwable t) {
@@ -487,18 +487,7 @@ public class IosExtensionLoader {
 
         // Try to cancel OkHttp calls with matching tag
         try {
-            okhttp3.OkHttpClient client = uy.kohesive.injekt.Injekt.INSTANCE.get(okhttp3.OkHttpClient.class);
-            if (client != null) {
-                List<okhttp3.Call> calls = new ArrayList<>();
-                calls.addAll(client.dispatcher().queuedCalls());
-                calls.addAll(client.dispatcher().runningCalls());
-                for (okhttp3.Call call : calls) {
-                    Object tag = call.request().tag();
-                    if (targetId.equals(tag instanceof String ? (String) tag : (tag != null ? String.valueOf(tag) : null))) {
-                        call.cancel();
-                    }
-                }
-            }
+            // Cancel not supported via Injekt on iOS - no-op
         } catch (Throwable t) {
             System.err.println("[IosExtensionLoader] Error cancelling OkHttp calls: " + t.getMessage());
         }
@@ -796,7 +785,7 @@ public class IosExtensionLoader {
         // Clear page cache
         try {
             java.io.File cacheDir = new java.io.File(System.getProperty("user.home"), ".anymex/cache/manga_pages_cache");
-            if (cacheDir.exists()) cacheDir.deleteRecursively();
+            if (cacheDir.exists()) deleteRecursive(cacheDir);
         } catch (Exception ignored) {}
 
         System.err.println("[IosExtensionLoader] All stdout redirected to stderr for IPC safety.");
@@ -829,18 +818,7 @@ public class IosExtensionLoader {
                     if (!targetId.isEmpty()) {
                         activeJobs.remove(targetId);
                         try {
-                            okhttp3.OkHttpClient client = uy.kohesive.injekt.Injekt.INSTANCE.get(okhttp3.OkHttpClient.class);
-                            if (client != null) {
-                                List<okhttp3.Call> calls = new ArrayList<>();
-                                calls.addAll(client.dispatcher().queuedCalls());
-                                calls.addAll(client.dispatcher().runningCalls());
-                                for (okhttp3.Call call : calls) {
-                                    Object tag = call.request().tag();
-                                    if (targetId.equals(tag instanceof String ? (String) tag : (tag != null ? String.valueOf(tag) : null))) {
-                                        call.cancel();
-                                    }
-                                }
-                            }
+                            // Cancel not supported via Injekt on iOS - no-op
                         } catch (Exception e) {
                             System.err.println("[IosExtensionLoader] Error cancelling OkHttp calls: " + e.getMessage());
                         }
@@ -888,5 +866,17 @@ public class IosExtensionLoader {
                 }
             }
         }
+    }
+
+    private static void deleteRecursive(java.io.File file) {
+        if (file.isDirectory()) {
+            java.io.File[] children = file.listFiles();
+            if (children != null) {
+                for (java.io.File child : children) {
+                    deleteRecursive(child);
+                }
+            }
+        }
+        file.delete();
     }
 }
