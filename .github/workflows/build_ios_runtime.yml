@@ -17,7 +17,7 @@ on:
         required: false
         default: 'ios-runtime-latest'
   push:
-    branches: [ "ios" ]
+    branches: [ "ios-bridge" ]
     paths:
       - 'ios/**'
       - 'RuntimeBridges/**'
@@ -408,7 +408,7 @@ jobs:
           git commit -m "chore: update prebuilt OpenJDK Zero VM libs for iOS ARM64"
 
       - name: Push changes
-        run: git push origin HEAD:ios
+        run: git push origin HEAD:ios-bridge
 
       - name: Create GitHub Release
         if: ${{ github.event.inputs.create_release == 'true' || github.event_name == 'push' }}
