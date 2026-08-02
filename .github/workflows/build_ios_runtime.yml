@@ -82,9 +82,8 @@ jobs:
             exit 1
           fi
           echo "Found boot JDK at: $BOOT_HOME"
-          echo "BOOT_JDK=$BOOT_HOME" >> $GITHUB_ENV
-          # Rename to known location for caching
           mv "$BOOT_HOME" ~/boot-jdk
+          echo "BOOT_JDK=$HOME/boot-jdk" >> $GITHUB_ENV
 
       - name: Set BOOT_JDK from cache
         if: steps.cache-boot-jdk.outputs.cache-hit == 'true'
