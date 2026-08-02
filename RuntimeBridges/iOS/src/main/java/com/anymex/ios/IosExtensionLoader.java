@@ -705,10 +705,15 @@ public class IosExtensionLoader {
      */
     @SuppressWarnings("unchecked")
     private static String runSuspend(JsonObject args, Function2<CoroutineScope, Continuation<? super String>, Object> block) {
-        return (String) BuildersKt.runBlocking(
-                EmptyCoroutineContext.INSTANCE,
-                (Function2<CoroutineScope, Continuation<Object>, Object>) (scope, cont) -> block.invoke(scope, (Continuation) cont)
-        );
+        try {
+            return (String) BuildersKt.runBlocking(
+                    EmptyCoroutineContext.INSTANCE,
+                    (Function2<CoroutineScope, Continuation<Object>, Object>) (scope, cont) -> block.invoke(scope, (Continuation) cont)
+            );
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return errorJson("Interrupted: " + e.getMessage());
+        }
     }
 
     // =======================================================================
