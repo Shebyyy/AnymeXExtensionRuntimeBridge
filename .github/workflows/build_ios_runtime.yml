@@ -48,14 +48,29 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/boot-jdk
-          key: boot-jdk-26-ea-macos-arm64-v1
+          key: boot-jdk-26-ea-macos-arm64-v2
 
       - name: Download JDK 26 EA (boot JDK)
         if: steps.cache-boot-jdk.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/boot-jdk
-          curl -L -o ~/boot-jdk/jdk26.tar.gz \
-            'https://download.java.net/java/early_access/jdk/26/29/GPL/openjdk-26-ea+29_macos-aarch64_bin.tar.gz'
+          # Scrape the jdk.java.net EA page to find the latest macOS ARM64 tar.gz URL
+          DOWNLOAD_PAGE=$(curl -sL 'https://jdk.java.net/26/')
+          JDK_URL=$(echo "$DOWNLOAD_PAGE" | grep -oE 'https://download\.java\.net/java/early_access/jdk/26/[0-9]+/GPL/openjdk-26-ea\+[0-9]+_macos-aarch64_bin\.tar\.gz' | head -1)
+          if [ -z "$JDK_URL" ]; then
+            echo "ERROR: Could not find JDK 26 EA macOS ARM64 download URL"
+            echo "Page content (first 2000 chars):"
+            echo "$DOWNLOAD_PAGE" | head -c 2000
+            exit 1
+          fi
+          echo "Downloading: $JDK_URL"
+          curl -L -o ~/boot-jdk/jdk26.tar.gz "$JDK_URL"
+          FILE_SIZE=$(stat -f%z ~/boot-jdk/jdk26.tar.gz 2>/dev/null || stat -c%s ~/boot-jdk/jdk26.tar.gz)
+          if [ "$FILE_SIZE" -lt 10000000 ]; then
+            echo "ERROR: Downloaded file is only $FILE_SIZE bytes (expected 100MB+), likely an error page"
+            head -c 500 ~/boot-jdk/jdk26.tar.gz
+            exit 1
+          fi
           tar xzf ~/boot-jdk/jdk26.tar.gz -C ~/boot-jdk --strip-components=1
           rm ~/boot-jdk/jdk26.tar.gz
           echo "BOOT_JDK=$HOME/boot-jdk/Contents/Home" >> $GITHUB_ENV
@@ -237,15 +252,15 @@ jobs:
               -o RuntimeBridges/Desktop/gradle/wrapper/gradle-wrapper.jar
           fi
 
-      - name: Build Desktop bridge JAR
+      - name: Build Desktop bridge JAR (shadow/fat JAR)
         working-directory: RuntimeBridges/Desktop
         run: |
           chmod +x gradlew 2>/dev/null || true
-          ./gradlew jar --no-daemon
+          ./gradlew shadowJar --no-daemon
 
       - name: Compile IosExtensionLoader.java
         run: |
-          # Compile the iOS Java entry point against the desktop JAR
+          # Compile the iOS Java entry point against the desktop fat JAR
           mkdir -p build/ios-classes
           javac \
             -cp "RuntimeBridges/Desktop/build/libs/desktop_bridge.jar" \
@@ -258,7 +273,7 @@ jobs:
           mkdir -p build/ios-runtime
           cd build/ios-runtime
 
-          # Extract desktop bridge JAR (contains all Kotlin code + deps)
+          # Extract desktop bridge fat JAR (contains all Kotlin code + deps)
           jar xf ../../RuntimeBridges/Desktop/build/libs/desktop_bridge.jar
           rm -rf META-INF/MANIFEST.MF
 
