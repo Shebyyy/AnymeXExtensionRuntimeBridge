@@ -113,14 +113,13 @@ public class IosExtensionLoader {
             }
         }
 
-        JsonObject args;
+        final JsonObject args;
         try {
-            args = gson.fromJson(argsJson, JsonObject.class);
+            JsonObject parsed = gson.fromJson(argsJson, JsonObject.class);
+            args = (parsed != null) ? parsed : new JsonObject();
         } catch (Exception e) {
-            // argsJson might be null or invalid — treat as empty object
             args = new JsonObject();
         }
-        if (args == null) args = new JsonObject();
 
         try {
             switch (method) {
@@ -289,16 +288,17 @@ public class IosExtensionLoader {
         String sourceId = getString(args, "sourceId");
         Object isAnime = getIsAnime(args);
 
-        String url = "";
-        String title = "";
-        String cover = "";
-
         JsonObject media = args.getAsJsonObject("media");
+        final String url, title, cover;
         if (media != null) {
             url = getString(media, "url");
             title = getString(media, "title");
-            cover = getString(media, "thumbnail_url");
-            if (cover.isEmpty()) cover = getString(media, "cover");
+            String c = getString(media, "thumbnail_url");
+            cover = c.isEmpty() ? getString(media, "cover") : c;
+        } else {
+            url = "";
+            title = "";
+            cover = "";
         }
 
         return runSuspend(args, (scope, cont) ->
@@ -307,13 +307,15 @@ public class IosExtensionLoader {
 
     private static String handleAniyomiGetVideoList(JsonObject args) {
         String sourceId = getString(args, "sourceId");
-        String url = "";
-        String name = "";
 
         JsonObject episode = args.getAsJsonObject("episode");
+        final String url, name;
         if (episode != null) {
             url = getString(episode, "url");
             name = getString(episode, "name");
+        } else {
+            url = "";
+            name = "";
         }
 
         return runSuspend(args, (scope, cont) ->
@@ -322,13 +324,15 @@ public class IosExtensionLoader {
 
     private static String handleAniyomiGetPageList(JsonObject args) {
         String sourceId = getString(args, "sourceId");
-        String url = "";
-        String name = "";
 
         JsonObject episode = args.getAsJsonObject("episode");
+        final String url, name;
         if (episode != null) {
             url = getString(episode, "url");
             name = getString(episode, "name");
+        } else {
+            url = "";
+            name = "";
         }
 
         return runSuspend(args, (scope, cont) ->
