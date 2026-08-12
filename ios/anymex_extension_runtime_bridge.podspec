@@ -28,7 +28,7 @@ On Desktop platforms, spawns a JVM subprocess and communicates via stdin/stdout 
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    'OTHER_LDFLAGS' => '-ljava',
+    'OTHER_LDFLAGS' => '',
   }
 
   # Ensure Swift files are compiled
