@@ -101,16 +101,17 @@ static pthread_mutex_t _jvmMutex = PTHREAD_MUTEX_INITIALIZER;
     NSDictionary *args = call.arguments;
     NSString *bridgePath = args[@"path"];
     NSDictionary *settings = args[@"settings"];
+    NSString *jrePath = args[@"jrePath"]; // Optional: JRE path from Dart (for downloaded JRE on iOS)
 
     if (bridgePath.length == 0) {
         result(@(NO));
         return;
     }
 
-    // Discover the embedded JDK
-    NSString *jdkHome = [JavaLauncher findJavaHome];
+    // Discover the JDK: prefer explicit path from Dart, fallback to auto-discovery in app bundle
+    NSString *jdkHome = jrePath.length > 0 ? jrePath : [JavaLauncher findJavaHome];
     if (jdkHome == nil) {
-        NSLog(@"[AnymeXPlugin] OpenJDK not found in app bundle");
+        NSLog(@"[AnymeXPlugin] OpenJDK not found (neither provided nor in app bundle)");
         result(@(NO));
         return;
     }

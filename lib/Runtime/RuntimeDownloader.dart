@@ -167,7 +167,11 @@ class RuntimeDownloader {
       bool isLoaded;
 
       if (Platform.isAndroid || Platform.isIOS) {
-        isLoaded = await AnymeXRuntimeBridge.loadAnymeXRuntimeHost(localApkPath ?? bridgeFile.path);
+        // On iOS, pass the downloaded JRE path to native so it can find it
+        final jrePath = Platform.isIOS ? jreDir.path : null;
+        isLoaded = await AnymeXRuntimeBridge.loadAnymeXRuntimeHost(
+            localApkPath ?? bridgeFile.path,
+            jrePath: jrePath);
       } else {
         isLoaded = true;
       }

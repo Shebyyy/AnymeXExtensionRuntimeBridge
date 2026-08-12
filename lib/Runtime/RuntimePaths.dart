@@ -58,14 +58,10 @@ class RuntimePaths {
     return p.join(dir.path, fileName);
   }
 
-  /// On iOS, returns the path where the embedded OpenJDK lives inside
-  /// the app bundle. Returns null if the embedded JDK is not found.
+  /// On iOS, the JRE is downloaded to the Application Support directory
+  /// and its path is passed to the native side via method channel args.
   Future<String?> get embeddedJavaHome async {
-    if (!Platform.isIOS) return null;
-    // The embedded JDK is bundled by CI into Frameworks/
-    // The native side (JavaLauncher.findJavaHome) handles discovery.
-    // This Dart method exists for the downloader to skip JRE download on iOS.
-    return null; // iOS gets JRE from the app bundle, not downloaded
+    return null;
   }
 
   Future<Directory> get jreDir async {

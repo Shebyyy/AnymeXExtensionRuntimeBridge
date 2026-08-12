@@ -140,7 +140,7 @@ class AnymeXRuntimeBridge {
 
   /// MethodChannel call for Android and iOS (native JNI bridge on iOS).
   static Future<bool> loadAnymeXRuntimeHost(String apkPath,
-      {Map<String, dynamic>? settings}) async {
+      {Map<String, dynamic>? settings, String? jrePath}) async {
     if (!Platform.isAndroid && !Platform.isIOS) return false;
 
     if (_loadCompleter != null) {
@@ -153,11 +153,16 @@ class AnymeXRuntimeBridge {
     final finalSettings = settings ?? {};
 
     try {
-      final result =
-          await _channel.invokeMethod<bool>('loadAnymeXRuntimeHost', {
+      final args = <String, dynamic>{
         'path': apkPath,
         'settings': finalSettings,
-      });
+      };
+      // On iOS, pass the downloaded JRE path so native can find it
+      if (Platform.isIOS && jrePath != null) {
+        args['jrePath'] = jrePath;
+      }
+      final result =
+          await _channel.invokeMethod<bool>('loadAnymeXRuntimeHost', args);
       final bool isLoaded = result ?? false;
 
       if (isLoaded) {
