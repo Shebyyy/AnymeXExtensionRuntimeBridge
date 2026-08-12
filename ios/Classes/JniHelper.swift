@@ -9,28 +9,29 @@
 // returns the running JVM instance.
 
 import Foundation
+import Darwin
 
 // MARK: - Raw C JNI Types
 
 /// Mirror the key JNI C types. On 64-bit iOS these are pointers.
-typealias JavaVM = UnsafeMutableRawPointer
-typealias JNIEnv = UnsafeMutableRawPointer
+public typealias JavaVM = UnsafeMutableRawPointer
+public typealias JNIEnv = UnsafeMutableRawPointer
 
-typealias jobject = UnsafeMutableRawPointer?
-typealias jclass = jobject
-typealias jstring = jobject
-typealias jthrowable = jobject
-typealias jmethodID = UnsafeMutableRawPointer?
-typealias jfieldID = UnsafeMutableRawPointer?
-typealias jboolean = UInt8
-typealias jbyte = Int8
-typealias jchar = UInt16
-typealias jshort = Int16
-typealias jint = Int32
-typealias jlong = Int64
-typealias jfloat = Float
-typealias jdouble = Double
-typealias jsize = Int32
+public typealias jobject = UnsafeMutableRawPointer?
+public typealias jclass = jobject
+public typealias jstring = jobject
+public typealias jthrowable = jobject
+public typealias jmethodID = UnsafeMutableRawPointer?
+public typealias jfieldID = UnsafeMutableRawPointer?
+public typealias jboolean = UInt8
+public typealias jbyte = Int8
+public typealias jchar = UInt16
+public typealias jshort = Int16
+public typealias jint = Int32
+public typealias jlong = Int64
+public typealias jfloat = Float
+public typealias jdouble = Double
+public typealias jsize = Int32
 
 /// JNI false/true constants
 let JNI_FALSE: jboolean = 0
@@ -53,10 +54,24 @@ let JNI_EINVAL: jint = -6
 // We access the functions through the JNINativeInterface struct.
 
 /// Function pointer types for the JNI functions we use.
-// NOTE: JNI function pointer types are not used directly here.
-// The actual JNI calls go through the JNINativeInterface_* vtable helpers
-// defined in jni.h (imported as C headers). Variadic function pointers
-// cannot be expressed as Swift type aliases.
+/// These mirror the corresponding entries in the JNINativeInterface vtable
+/// (jni.h) and are cast to from raw function-table slots via `getJniFunction`.
+typealias jniFindClassFn = @convention(c) (JNIEnv?, UnsafePointer<Int8>) -> jclass
+typealias jniGetStaticMethodIDFn = @convention(c) (JNIEnv?, jclass, UnsafePointer<Int8>, UnsafePointer<Int8>) -> jmethodID
+typealias jniGetMethodIDFn = @convention(c) (JNIEnv?, jclass, UnsafePointer<Int8>, UnsafePointer<Int8>) -> jmethodID
+typealias jniGetFieldIDFn = @convention(c) (JNIEnv?, jclass, UnsafePointer<Int8>, UnsafePointer<Int8>) -> jfieldID
+typealias jniGetStaticObjectFieldFn = @convention(c) (JNIEnv?, jclass, jfieldID) -> jobject
+typealias jniGetObjectClassFn = @convention(c) (JNIEnv?, jobject) -> jclass
+typealias jniNewStringUTFnFn = @convention(c) (JNIEnv?, UnsafePointer<Int8>) -> jstring
+typealias jniGetStringUTFCharsFn = @convention(c) (JNIEnv?, jstring, UnsafeMutablePointer<jboolean>?) -> UnsafePointer<Int8>?
+typealias jniReleaseStringUTFCharsFn = @convention(c) (JNIEnv?, jstring, UnsafePointer<Int8>?) -> Void
+typealias jniDeleteLocalRefFn = @convention(c) (JNIEnv?, jobject) -> Void
+typealias jniNewGlobalRefFn = @convention(c) (JNIEnv?, jobject) -> jobject
+typealias jniDeleteGlobalRefFn = @convention(c) (JNIEnv?, jobject) -> Void
+typealias jniExceptionCheckFn = @convention(c) (JNIEnv?) -> jboolean
+typealias jniExceptionDescribeFn = @convention(c) (JNIEnv?) -> Void
+typealias jniExceptionClearFn = @convention(c) (JNIEnv?) -> Void
+typealias jniExceptionOccurredFn = @convention(c) (JNIEnv?) -> jthrowable
 
 // MARK: - JNI Exception
 
@@ -91,7 +106,7 @@ public class JniHelper: NSObject {
     // MARK: - Singleton
 
     @objc public static let shared = JniHelper()
-    private override init() {}
+    @objc public override init() {}
 
     // MARK: - JVM State
 
@@ -145,8 +160,9 @@ public class JniHelper: NSObject {
         // Index 4 = GetEnv (0=reserved, 1=DestroyJavaVM, 2=AttachCurrentThread,
         //   3=DetachCurrentThread, 4=GetEnv, 5=AttachCurrentThreadAsDaemon)
         typealias GetEnvFn = @convention(c) (JavaVM?, UnsafeMutablePointer<UnsafeMutableRawPointer?>?, jint) -> jint
+        let funcTableTyped = funcTable.assumingMemoryBound(to: UnsafeMutableRawPointer?.self)
         let getEnv = unsafeBitCast(
-            funcTable.advanced(by: 4).pointee,
+            funcTableTyped.advanced(by: 4).pointee,
             to: GetEnvFn.self
         )
 
@@ -178,8 +194,9 @@ public class JniHelper: NSObject {
     /// Attach the current native thread to the JVM.
     private func attachCurrentThread(vm: JavaVM, funcTable: UnsafeMutableRawPointer) -> Bool {
         typealias AttachFn = @convention(c) (JavaVM?, UnsafeMutablePointer<UnsafeMutableRawPointer?>?, UnsafeMutableRawPointer?) -> jint
+        let funcTableTyped = funcTable.assumingMemoryBound(to: UnsafeMutableRawPointer?.self)
         let attach = unsafeBitCast(
-            funcTable.advanced(by: 3).pointee,  // AttachCurrentThread is at index 3
+            funcTableTyped.advanced(by: 3).pointee,  // AttachCurrentThread is at index 3
             to: AttachFn.self
         )
 
@@ -255,7 +272,8 @@ public class JniHelper: NSObject {
         guard let funcTable = envPtr.pointee else {
             fatalError("[JniHelper] JNIEnv function table is nil")
         }
-        return unsafeBitCast(funcTable.advanced(by: index).pointee, to: T.self)
+        let funcTableTyped = funcTable.assumingMemoryBound(to: UnsafeMutableRawPointer?.self)
+        return unsafeBitCast(funcTableTyped.advanced(by: index).pointee, to: T.self)
     }
 
     // MARK: - Class and Method Resolution
@@ -264,7 +282,7 @@ public class JniHelper: NSObject {
     ///
     /// - Parameter name: JNI class name with slashes
     /// - Returns: The jclass reference, or nil if not found
-    public func findClass(name: String) -> jclass? {
+    public func findClass(name: String) -> jclass {
         guard let env = getEnv() else { return nil }
         let fn: jniFindClassFn = getJniFunction(env: env, index: 6, as: jniFindClassFn.self)
         let cls = fn(env, name)
@@ -279,7 +297,7 @@ public class JniHelper: NSObject {
     ///   - name: Method name
     ///   - sig: JNI method signature (e.g., "(Ljava/lang/String;)V")
     /// - Returns: The jmethodID, or nil if not found
-    public func getStaticMethodID(cls: jclass, name: String, sig: String) -> jmethodID? {
+    public func getStaticMethodID(cls: jclass, name: String, sig: String) -> jmethodID {
         guard let env = getEnv() else { return nil }
         let fn: jniGetStaticMethodIDFn = getJniFunction(env: env, index: 114, as: jniGetStaticMethodIDFn.self)
         let mid = fn(env, cls, name, sig)
@@ -290,7 +308,7 @@ public class JniHelper: NSObject {
     }
 
     /// Get an instance method ID.
-    public func getMethodID(cls: jclass, name: String, sig: String) -> jmethodID? {
+    public func getMethodID(cls: jclass, name: String, sig: String) -> jmethodID {
         guard let env = getEnv() else { return nil }
         let fn: jniGetMethodIDFn = getJniFunction(env: env, index: 33, as: jniGetMethodIDFn.self)
         let mid = fn(env, cls, name, sig)
@@ -301,7 +319,7 @@ public class JniHelper: NSObject {
     }
 
     /// Get a static field ID.
-    public func getStaticFieldID(cls: jclass, name: String, sig: String) -> jfieldID? {
+    public func getStaticFieldID(cls: jclass, name: String, sig: String) -> jfieldID {
         guard let env = getEnv() else { return nil }
         let fn: jniGetFieldIDFn = getJniFunction(env: env, index: 94, as: jniGetFieldIDFn.self)
         let fid = fn(env, cls, name, sig)
@@ -312,7 +330,7 @@ public class JniHelper: NSObject {
     }
 
     /// Get the value of a static object field.
-    public func getStaticObjectField(cls: jclass, fieldID: jfieldID) -> jobject? {
+    public func getStaticObjectField(cls: jclass, fieldID: jfieldID) -> jobject {
         guard let env = getEnv() else { return nil }
         let fn: jniGetStaticObjectFieldFn = getJniFunction(env: env, index: 145, as: jniGetStaticObjectFieldFn.self)
         let result = fn(env, cls, fieldID)
@@ -321,7 +339,7 @@ public class JniHelper: NSObject {
     }
 
     /// Get the class of a Java object.
-    public func getObjectClass(obj: jobject) -> jclass? {
+    public func getObjectClass(obj: jobject) -> jclass {
         guard let env = getEnv() else { return nil }
         let fn: jniGetObjectClassFn = getJniFunction(env: env, index: 31, as: jniGetObjectClassFn.self)
         return fn(env, obj)
@@ -330,7 +348,7 @@ public class JniHelper: NSObject {
     // MARK: - Method Invocation
 
     /// Call a static method that returns an Object.
-    public func callStaticObjectMethod(cls: jclass, methodID: jmethodID, args: [jvalue]) -> jobject? {
+    public func callStaticObjectMethod(cls: jclass, methodID: jmethodID, args: [jvalue]) -> jobject {
         guard let env = getEnv() else { return nil }
         let fn = getJniFunction(env: env, index: 116, as: (@convention(c) (JNIEnv?, jclass, jmethodID, UnsafeMutableRawPointer?) -> jobject).self)
 
@@ -422,7 +440,7 @@ public class JniHelper: NSObject {
     }
 
     /// Call an instance method that returns an Object.
-    public func callObjectMethod(obj: jobject, methodID: jmethodID, args: [jvalue] = []) -> jobject? {
+    public func callObjectMethod(obj: jobject, methodID: jmethodID, args: [jvalue] = []) -> jobject {
         guard let env = getEnv() else { return nil }
         let fnV = getJniFunction(env: env, index: 35, as: (@convention(c) (JNIEnv?, jobject, jmethodID, UnsafeMutableRawPointer?) -> jobject).self)
 
@@ -464,7 +482,7 @@ public class JniHelper: NSObject {
     // MARK: - String Conversion
 
     /// Convert a Swift String to a JNI jstring.
-    public func toJString(_ string: String) -> jstring? {
+    public func toJString(_ string: String) -> jstring {
         guard let env = getEnv() else { return nil }
         let fn: jniNewStringUTFnFn = getJniFunction(env: env, index: 164, as: jniNewStringUTFnFn.self)
         return fn(env, string)
@@ -712,7 +730,7 @@ public class JniHelper: NSObject {
     }
 
     /// Create a global reference to a JNI object.
-    public func newGlobalRef(obj: jobject?) -> jobject? {
+    public func newGlobalRef(obj: jobject?) -> jobject {
         guard let obj = obj, let env = getEnv() else { return nil }
         let fn: jniNewGlobalRefFn = getJniFunction(env: env, index: 21, as: jniNewGlobalRefFn.self)
         return fn(env, obj)
@@ -746,13 +764,8 @@ public class JniHelper: NSObject {
         describeFn(env)
 
         // Get the exception object for the message
-        let excObj: jobject?
-        let excFn = getJniFunction(
-            env: env, index: 15,
-            as: (@convention(c) (JNIEnv?, UnsafeMutablePointer<jobject?>?) -> jint).self
-        )
-        var exc: jobject? = nil
-        excFn(env, &exc)
+        let excFn: jniExceptionOccurredFn = getJniFunction(env: env, index: 15, as: jniExceptionOccurredFn.self)
+        let exc = excFn(env)
 
         var message = "Unknown JNI exception"
         var stackTrace = ""
@@ -943,7 +956,7 @@ public class JniHelper: NSObject {
     /// Call initialize on the RuntimeBridge.
     /// On iOS, there is no Android Context, so we pass null for the context
     /// parameter. The bridge JAR should handle the null case gracefully.
-    @objc public func initializeBridge(settings: [String: Any?]?) {
+    public func initializeBridge(settings: [String: Any?]?) {
         // RuntimeBridge.initialize(Context, Map<String, Any?>?)
         // On iOS we don't have an Android Context, so we pass null
         let sig = "(Landroid/content/Context;Ljava/util/Map;)V"
@@ -981,7 +994,7 @@ public class JniHelper: NSObject {
     // MARK: - Java Object Creation Helpers
 
     /// Create a java.util.HashMap from a Swift dictionary.
-    public func createJavaHashMap(from dict: [String: Any?]) -> jobject? {
+    public func createJavaHashMap(from dict: [String: Any?]) -> jobject {
         guard let env = getEnv() else { return nil }
 
         let hashMapClass = findClass(name: "java/util/HashMap")
@@ -1033,7 +1046,7 @@ public class JniHelper: NSObject {
     }
 
     /// Create a java.util.ArrayList from a Swift array.
-    public func createJavaArrayList(from array: [Any?]) -> jobject? {
+    public func createJavaArrayList(from array: [Any?]) -> jobject {
         guard let env = getEnv() else { return nil }
 
         let listClass = findClass(name: "java/util/ArrayList")
@@ -1066,7 +1079,7 @@ public class JniHelper: NSObject {
     }
 
     /// Allocate a new Java object.
-    private func newJavaObject(cls: jclass?, methodID: jmethodID?, args: [jvalue] = []) -> jobject? {
+    private func newJavaObject(cls: jclass?, methodID: jmethodID?, args: [jvalue] = []) -> jobject {
         guard let cls = cls, let methodID = methodID, let env = getEnv() else { return nil }
         let fnV = getJniFunction(
             env: env, index: 28,
