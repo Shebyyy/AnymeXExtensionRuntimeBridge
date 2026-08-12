@@ -177,7 +177,11 @@ class AnymeXRuntimeBridge {
       _loadCompleter!.complete(isLoaded);
       return isLoaded;
     } catch (e) {
-      print('Failed to load Runtime Host from $apkPath: $e');
+      final errorMsg = e is PlatformException
+          ? 'Runtime Host Error: ${e.code} — ${e.message}${e.details != null ? " (${e.details})" : ""}'
+          : 'Failed to load Runtime Host from $apkPath: $e';
+      print(errorMsg);
+      Logger.log(errorMsg);
       _loadCompleter?.complete(false);
       return false;
     } finally {

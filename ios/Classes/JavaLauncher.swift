@@ -303,23 +303,31 @@ public class JavaLauncher: NSObject {
     }
 
     /// Start the JVM asynchronously and report status via callback.
+    /// On iOS, JLI_Launch MUST run on the main thread due to -XstartOnFirstThread.
     @objc public func startJvmAsync(
         javaHome: String,
         bridgeJarPath: String,
         extraArgs: [String],
         completion: @escaping (Bool) -> Void
     ) {
-        queue.async { [weak self] in
-            guard let self = self else {
-                completion(false)
-                return
-            }
+        if Thread.isMainThread {
             let success = self.startJvm(
                 javaHome: javaHome,
                 bridgeJarPath: bridgeJarPath,
                 extraArgs: extraArgs
             )
-            DispatchQueue.main.async {
+            completion(success)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else {
+                    completion(false)
+                    return
+                }
+                let success = self.startJvm(
+                    javaHome: javaHome,
+                    bridgeJarPath: bridgeJarPath,
+                    extraArgs: extraArgs
+                )
                 completion(success)
             }
         }

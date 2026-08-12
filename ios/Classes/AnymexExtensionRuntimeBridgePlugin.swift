@@ -154,12 +154,12 @@ public class AnymexExtensionRuntimeBridgePlugin: NSObject, FlutterPlugin {
 
                     result(true)
                 } else {
-                    print("[AnymeXPlugin] JVM started but JNI attachment failed")
-                    result(false)
+                    print("[AnymeXPlugin] ❌ JVM started but JNI_GetCreatedJavaVMs failed")
+                    result(FlutterError(code: "JNI_ATTACH_FAILED", message: "JVM started but JNI_GetCreatedJavaVMs returned no JVM", details: nil))
                 }
             } else {
-                print("[AnymeXPlugin] JVM launch failed")
-                result(false)
+                print("[AnymeXPlugin] ❌ JVM launch failed (exitIntercepted=\(ExitOverride.shared.exitIntercepted), exitCode=\(ExitOverride.shared.lastExitCode))")
+                result(FlutterError(code: "JVM_LAUNCH_FAILED", message: "JVM failed to start", details: "exitIntercepted=\(ExitOverride.shared.exitIntercepted), exitCode=\(ExitOverride.shared.lastExitCode)"))
             }
         }
     }
