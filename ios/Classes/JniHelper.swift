@@ -48,6 +48,11 @@ let JNI_ENOMEM: jint = -4
 let JNI_EEXIST: jint = -5
 let JNI_EINVAL: jint = -6
 
+/// RTLD_DEFAULT is not exposed to Swift via Darwin module.
+/// On iOS/macOS it equals UnsafeMutableRawPointer(bitPattern: -2),
+/// which tells dlsym to search all loaded dylibs.
+private let RTLD_DEFAULT = UnsafeMutableRawPointer(bitPattern: -2)!
+
 // MARK: - JNI Invocation Table Function Pointers
 //
 // The JNIEnv is actually a pointer to a pointer to the function table.
@@ -560,7 +565,7 @@ public class JniHelper: NSObject {
                 break
             }
 
-            let key = fromJString(keyObj as? jstring) ?? "\(keyObj!)"
+            let key = fromJString(keyObj as? jstring) ?? "\(keyObj)"
             let value = javaObjectToSwift(valueObj)
 
             result[key] = value
