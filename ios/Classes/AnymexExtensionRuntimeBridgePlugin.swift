@@ -45,7 +45,7 @@ public class AnymexExtensionRuntimeBridgePlugin: NSObject, FlutterPlugin {
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         let method = call.method
 
-        if method == "loadRuntime" {
+        if method == "loadAnymeXRuntimeHost" {
             handleLoadRuntime(call: call, result: result)
             return
         }
