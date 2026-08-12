@@ -303,10 +303,10 @@ public class JavaLauncher: NSObject {
     }
 
     /// Start the JVM asynchronously and report status via callback.
-    public func startJvmAsync(
+    @objc public func startJvmAsync(
         javaHome: String,
         bridgeJarPath: String,
-        extraArgs: [String] = [],
+        extraArgs: [String],
         completion: @escaping (Bool) -> Void
     ) {
         queue.async { [weak self] in

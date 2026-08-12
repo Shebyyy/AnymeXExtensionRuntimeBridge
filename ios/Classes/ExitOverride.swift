@@ -9,27 +9,27 @@ import Foundation
 
 /// Thread-safe storage for the last intercepted exit code.
 /// Accessible from anywhere in the plugin to check if the JVM attempted to exit.
-public class ExitOverride {
-    public static let shared = ExitOverride()
+@objc public class ExitOverride: NSObject {
+    @objc public static let shared = ExitOverride()
 
     /// The most recent exit code intercepted from Java.
-    public private(set) var lastExitCode: Int32 = 0
+    @objc public private(set) var lastExitCode: Int32 = 0
 
     /// Whether exit() has been intercepted at least once.
-    public private(set) var exitIntercepted: Bool = false
+    @objc public private(set) var exitIntercepted: Bool = false
 
     /// Total number of exit() calls intercepted.
-    public private(set) var interceptCount: Int = 0
+    @objc public private(set) var interceptCount: Int = 0
 
     /// The last stack trace captured around the exit call.
-    public private(set) var lastStackTrace: String = ""
+    @objc public private(set) var lastStackTrace: String = ""
 
     private let lock = NSLock()
 
-    private init() {}
+    @objc private override init() { super.init() }
 
     /// Record an intercepted exit call. Called from the C override.
-    public func recordExit(code: Int32) {
+    @objc public func recordExit(code: Int32) {
         lock.lock()
         defer { lock.unlock() }
 
@@ -48,7 +48,7 @@ public class ExitOverride {
     }
 
     /// Reset the tracking state.
-    public func reset() {
+    @objc public func reset() {
         lock.lock()
         defer { lock.unlock() }
         lastExitCode = 0

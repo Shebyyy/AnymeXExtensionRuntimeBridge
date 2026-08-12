@@ -1107,6 +1107,256 @@ public class JniHelper: NSObject {
         return result
     }
 
+    // MARK: - Exception Helpers
+
+    /// Check if a JNI exception is pending.
+    public func exceptionCheck() -> jboolean {
+        guard let env = getEnv() else { return JNI_FALSE }
+        let fn: jniExceptionCheckFn = getJniFunction(env: env, index: 228, as: jniExceptionCheckFn.self)
+        return fn(env)
+    }
+
+    /// Describe the pending JNI exception (prints to stderr).
+    public func exceptionDescribe() {
+        guard let env = getEnv() else { return }
+        let fn: jniExceptionDescribeFn = getJniFunction(env: env, index: 16, as: jniExceptionDescribeFn.self)
+        fn(env)
+    }
+
+    /// Clear the pending JNI exception.
+    public func exceptionClear() {
+        guard let env = getEnv() else { return }
+        let fn: jniExceptionClearFn = getJniFunction(env: env, index: 17, as: jniExceptionClearFn.self)
+        fn(env)
+    }
+
+    /// Get the pending JNI exception object.
+    public func exceptionOccurred() -> jthrowable? {
+        guard let env = getEnv() else { return nil }
+        let fn: jniExceptionOccurredFn = getJniFunction(env: env, index: 15, as: jniExceptionOccurredFn.self)
+        return fn(env)
+    }
+
+    // MARK: - Instance Method Invocation (Primitive Returns)
+
+    /// Call an instance method that returns a boolean.
+    public func callBooleanMethod(obj: jobject, methodID: jmethodID, args: [jvalue] = []) -> jboolean {
+        guard let env = getEnv() else { return JNI_FALSE }
+        let fn = getJniFunction(
+            env: env, index: 37,
+            as: (@convention(c) (JNIEnv?, jobject, jmethodID, UnsafeMutableRawPointer?) -> jboolean).self
+        )
+
+        if args.isEmpty {
+            return fn(env, obj, methodID, nil)
+        } else {
+            let argBuffer = UnsafeMutableBufferPointer<jvalue>.allocate(capacity: args.count)
+            for (i, arg) in args.enumerated() { argBuffer[i] = arg }
+            let result = fn(env, obj, methodID, argBuffer.baseAddress)
+            argBuffer.deallocate()
+            return result
+        }
+    }
+
+    /// Call an instance method that returns an int.
+    public func callIntMethod(obj: jobject, methodID: jmethodID, args: [jvalue] = []) -> jint {
+        guard let env = getEnv() else { return 0 }
+        let fn = getJniFunction(
+            env: env, index: 49,
+            as: (@convention(c) (JNIEnv?, jobject, jmethodID, UnsafeMutableRawPointer?) -> jint).self
+        )
+
+        if args.isEmpty {
+            return fn(env, obj, methodID, nil)
+        } else {
+            let argBuffer = UnsafeMutableBufferPointer<jvalue>.allocate(capacity: args.count)
+            for (i, arg) in args.enumerated() { argBuffer[i] = arg }
+            let result = fn(env, obj, methodID, argBuffer.baseAddress)
+            argBuffer.deallocate()
+            return result
+        }
+    }
+
+    /// Call an instance method that returns a long.
+    public func callLongMethod(obj: jobject, methodID: jmethodID, args: [jvalue] = []) -> jlong {
+        guard let env = getEnv() else { return 0 }
+        let fn = getJniFunction(
+            env: env, index: 51,
+            as: (@convention(c) (JNIEnv?, jobject, jmethodID, UnsafeMutableRawPointer?) -> jlong).self
+        )
+
+        if args.isEmpty {
+            return fn(env, obj, methodID, nil)
+        } else {
+            let argBuffer = UnsafeMutableBufferPointer<jvalue>.allocate(capacity: args.count)
+            for (i, arg) in args.enumerated() { argBuffer[i] = arg }
+            let result = fn(env, obj, methodID, argBuffer.baseAddress)
+            argBuffer.deallocate()
+            return result
+        }
+    }
+
+    /// Call an instance method that returns a double.
+    public func callDoubleMethod(obj: jobject, methodID: jmethodID, args: [jvalue] = []) -> jdouble {
+        guard let env = getEnv() else { return 0.0 }
+        let fn = getJniFunction(
+            env: env, index: 59,
+            as: (@convention(c) (JNIEnv?, jobject, jmethodID, UnsafeMutableRawPointer?) -> jdouble).self
+        )
+
+        if args.isEmpty {
+            return fn(env, obj, methodID, nil)
+        } else {
+            let argBuffer = UnsafeMutableBufferPointer<jvalue>.allocate(capacity: args.count)
+            for (i, arg) in args.enumerated() { argBuffer[i] = arg }
+            let result = fn(env, obj, methodID, argBuffer.baseAddress)
+            argBuffer.deallocate()
+            return result
+        }
+    }
+
+    // MARK: - Type Checking
+
+    /// Check if a Java object is an instance of a given class.
+    public func isInstanceOf(obj: jobject, cls: jclass) -> Bool {
+        guard let env = getEnv() else { return false }
+        let fn = getJniFunction(
+            env: env, index: 32,
+            as: (@convention(c) (JNIEnv?, jobject, jclass) -> jboolean).self
+        )
+        return fn(env, obj, cls) != 0
+    }
+
+    /// Check if a Java object is a byte array.
+    public func isByteArray(_ obj: jobject) -> Bool {
+        guard let env = getEnv() else { return false }
+        let fn = getJniFunction(
+            env: env, index: 169,
+            as: (@convention(c) (JNIEnv?, jobject) -> jclass).self
+        )
+        let arrayClass = fn(env, obj)
+        if let arrayClass = arrayClass {
+            let name = jni.getClassName(env: env, cls: arrayClass)
+            deleteLocalRef(obj: arrayClass)
+            return name == "[B"
+        }
+        return false
+    }
+
+    /// Get the class name of a JNI class (uses JNI GetName, simplified).
+    private func jniClassName(env: JNIEnv, cls: jclass) -> String? {
+        // GetClassname is at index 184
+        let fn = getJniFunction(
+            env: env, index: 184,
+            as: (@convention(c) (JNIEnv?, jclass) -> UnsafePointer<Int8>?).self
+        )
+        guard let cName = fn(env, cls) else { return nil }
+        let name = String(cString: cName)
+        return name
+    }
+
+    // MARK: - Array Operations
+
+    /// Get the length of a Java array.
+    public func getArrayLength(array: jobject) -> jsize {
+        guard let env = getEnv() else { return 0 }
+        let fn = getJniFunction(
+            env: env, index: 171,
+            as: (@convention(c) (JNIEnv?, jobject) -> jsize).self
+        )
+        return fn(env, array)
+    }
+
+    /// Get the elements of a byte array as a pointer.
+    public func getByteArrayElements(array: jobject) -> UnsafeMutablePointer<jbyte>? {
+        guard let env = getEnv() else { return nil }
+        let fn = getJniFunction(
+            env: env, index: 187,
+            as: (@convention(c) (JNIEnv?, jobject, UnsafeMutablePointer<jboolean>?) -> UnsafeMutablePointer<jbyte>?).self
+        )
+        return fn(env, array, nil)
+    }
+
+    /// Release the elements of a byte array.
+    public func releaseByteArrayElements(array: jobject, bytes: UnsafeMutablePointer<jbyte>?) {
+        guard let env = getEnv() else { return }
+        let fn = getJniFunction(
+            env: env, index: 189,
+            as: (@convention(c) (JNIEnv?, jobject, UnsafeMutablePointer<jbyte>?, jint) -> Void).self
+        )
+        fn(env, array, bytes, 0) // 0 = JNI_ABORT (copy back but don't free)
+    }
+
+    /// Set a region of a byte array from a buffer.
+    public func setByteArrayRegion(array: jobject, buffer: UnsafePointer<jbyte>, length: jsize) {
+        guard let env = getEnv() else { return }
+        let fn = getJniFunction(
+            env: env, index: 211,
+            as: (@convention(c) (JNIEnv?, jobject, jsize, jsize, UnsafePointer<jbyte>?) -> Void).self
+        )
+        fn(env, array, 0, length, buffer)
+    }
+
+    /// Create a new byte array of the given size.
+    public func newByteArray(size: jsize) -> jobject? {
+        guard let env = getEnv() else { return nil }
+        let fn = getJniFunction(
+            env: env, index: 176,
+            as: (@convention(c) (JNIEnv?, jsize) -> jobject).self
+        )
+        return fn(env, size)
+    }
+
+    /// Create a new Object array.
+    public func newObjectArray(size: jint, elementClass: jclass) -> jobject? {
+        guard let env = getEnv() else { return nil }
+        let fn = getJniFunction(
+            env: env, index: 178,
+            as: (@convention(c) (JNIEnv?, jsize, jclass, jobject) -> jobject).self
+        )
+        return fn(env, size, elementClass, nil)
+    }
+
+    /// Set an element of an Object array.
+    public func setObjectArrayElement(array: jobject, index: jint, value: jobject?) {
+        guard let env = getEnv() else { return }
+        let fn = getJniFunction(
+            env: env, index: 183,
+            as: (@convention(c) (JNIEnv?, jobject, jsize, jobject) -> Void).self
+        )
+        fn(env, array, index, value)
+    }
+
+    // MARK: - Thread Management
+
+    /// Detach the current native thread from the JVM.
+    public func detachCurrentThread() {
+        vmLock.lock()
+        guard let vm = javaVM else {
+            vmLock.unlock()
+            return
+        }
+        vmLock.unlock()
+
+        // DetachCurrentThread is at index 3 in JNIInvokeInterface
+        let invokeInterface = vm.assumingMemoryBound(to: UnsafeMutableRawPointer?.self)
+        guard let funcTable = invokeInterface.pointee else { return }
+
+        typealias DetachFn = @convention(c) (JavaVM?) -> jint
+        let funcTableTyped = funcTable.assumingMemoryBound(to: UnsafeMutableRawPointer?.self)
+        let detach = unsafeBitCast(funcTableTyped.advanced(by: 3).pointee, to: DetachFn.self)
+
+        let result = detach(vm)
+        if result == JNI_OK {
+            // Remove from thread cache
+            threadLock.lock()
+            let tid = UInt(pthread_mach_thread_np(pthread_self()))
+            threadEnvMap.removeValue(forKey: tid)
+            threadLock.unlock()
+            print("[JniHelper] Detached thread from JVM")
+        }
+    }
+
     // MARK: - Cleanup
 
     /// Release the cached RuntimeBridge references.
