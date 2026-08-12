@@ -26,9 +26,8 @@ class RuntimeDownloader {
       "https://github.com/PojavLauncherTeam/android-openjdk-build-multiarch/releases/download/jre8-99f3f8b/jre8-zero-aarch64-ios.tar.xz";
 
   static String get _jreUrl {
-    // iOS gets its JRE embedded in the app bundle by CI — skip download
     if (Platform.isIOS) {
-      return '';
+      return iosJreUrl;
     }
     if (Platform.isWindows) {
       return "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.12+7/OpenJDK17U-jre_x64_windows_hotspot_17.0.12_7.zip";
@@ -86,8 +85,7 @@ class RuntimeDownloader {
 
       bool needsBridge =
           (localApkPath == null) && (force || !await bridgeFile.exists());
-      // iOS gets JRE from the app bundle (embedded by CI)
-      bool needsJre = isDesktop && !Platform.isIOS && !await jreDir.exists();
+      bool needsJre = isDesktop && !await jreDir.exists();
       // dex2jar not needed on iOS
       bool needsDex2jar = isDesktop && !Platform.isIOS && !File(dex2jarPath).existsSync();
 
@@ -105,7 +103,7 @@ class RuntimeDownloader {
 
       if (needsJre) {
         currentFileIndex++;
-        final ext = Platform.isWindows ? ".zip" : ".tar.gz";
+        final ext = Platform.isIOS ? ".tar.xz" : (Platform.isWindows ? ".zip" : ".tar.gz");
         final jreArchive = File(p.join((await _paths.runtimeDir).path, "jre_archive$ext"));
 
         final stepPrefix = totalFiles > 1 ? "($currentFileIndex/$totalFiles) " : "";
@@ -245,6 +243,21 @@ class RuntimeDownloader {
         final bytes = await File(archivePath).readAsBytes();
         final gzipBytes = GZipDecoder().decodeBytes(bytes);
         final archive = TarDecoder().decodeBytes(gzipBytes);
+        for (final file in archive) {
+          final filename = file.name;
+          if (file.isFile) {
+            final data = file.content as List<int>;
+            File(p.join(targetDir, filename))
+              ..createSync(recursive: true)
+              ..writeAsBytesSync(data);
+          } else {
+            Directory(p.join(targetDir, filename)).createSync(recursive: true);
+          }
+        }
+      } else if (archivePath.endsWith('.tar.xz')) {
+        final bytes = await File(archivePath).readAsBytes();
+        final xzBytes = XZDecoder().decodeBytes(bytes);
+        final archive = TarDecoder().decodeBytes(xzBytes);
         for (final file in archive) {
           final filename = file.name;
           if (file.isFile) {
