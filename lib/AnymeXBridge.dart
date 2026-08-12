@@ -15,7 +15,8 @@ class AnymeXRuntimeBridge {
   static final Map<String, String> cookiesMap = {};
   static final Map<String, String> userAgentMap = {};
 
-  static bool get isSupportedPlatform => !Platform.isIOS;
+  // iOS is supported via embedded PojavLauncher OpenJDK 8 (JLI_Launch + JNI)
+  static bool get isSupportedPlatform => true;
 
   static String? _cachedBridgePath;
   static String? _cachedToolsDirPath;
@@ -123,7 +124,7 @@ class AnymeXRuntimeBridge {
     }
 
     if (exists) {
-      if (Platform.isAndroid) {
+      if (Platform.isAndroid || Platform.isIOS) {
         await loadAnymeXRuntimeHost(bridgePath);
       } else {
         controller.setReady(true);
@@ -137,10 +138,10 @@ class AnymeXRuntimeBridge {
 
   static Completer<bool>? _loadCompleter;
 
-  /// Standard MethodChannel call for Android only
+  /// MethodChannel call for Android and iOS (native JNI bridge on iOS).
   static Future<bool> loadAnymeXRuntimeHost(String apkPath,
       {Map<String, dynamic>? settings}) async {
-    if (!Platform.isAndroid) return false;
+    if (!Platform.isAndroid && !Platform.isIOS) return false;
 
     if (_loadCompleter != null) {
       Logger.log("AnymeX Bridge is already loading, waiting for completion...");
@@ -171,7 +172,7 @@ class AnymeXRuntimeBridge {
       _loadCompleter!.complete(isLoaded);
       return isLoaded;
     } catch (e) {
-      print('Failed to load Runtime Host APK from $apkPath: $e');
+      print('Failed to load Runtime Host from $apkPath: $e');
       _loadCompleter?.complete(false);
       return false;
     } finally {
@@ -181,7 +182,7 @@ class AnymeXRuntimeBridge {
 
   /// Checks if the AnymeXBridgeHost is already loaded into memory.
   static Future<bool> isLoaded() async {
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid || Platform.isIOS) {
       try {
         final result = await _channel.invokeMethod<bool>('isLoaded');
         final loaded = result ?? false;
@@ -198,7 +199,7 @@ class AnymeXRuntimeBridge {
 
   /// Cancels an active request in the Runtime Host using its [token].
   static Future<bool> cancelRequest(String token) async {
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid || Platform.isIOS) {
       try {
         final result = await _channel.invokeMethod<bool>('cancelRequest', {
           'token': token,
@@ -224,8 +225,7 @@ class AnymeXRuntimeBridge {
         cookiesMap[host] = cookieString;
       }
     } catch (_) {}
-    if (!isSupportedPlatform) return;
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid || Platform.isIOS) {
       try {
         await _channel.invokeMethod<void>('setCookies', {
           'url': url,
@@ -257,8 +257,7 @@ class AnymeXRuntimeBridge {
         userAgentMap[host] = userAgent;
       }
     } catch (_) {}
-    if (!isSupportedPlatform) return;
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid || Platform.isIOS) {
       try {
         await _channel.invokeMethod<void>('setUserAgent', {
           'url': url,
@@ -291,6 +290,27 @@ class AnymeXRuntimeBridge {
       return _imageBytesCache[url]!;
     }
     if (!isSupportedPlatform) return null;
+
+    // On iOS, use the native method channel (JNI bridge)
+    if (Platform.isIOS) {
+      try {
+        final result = await _channel.invokeMethod<Uint8List>('getImageBytes', {
+          'sourceId': sourceId,
+          'isAnime': isAnime,
+          'url': url,
+        });
+        if (result != null) {
+          if (_imageBytesCache.length >= 150) {
+            _imageBytesCache.remove(_imageBytesCache.keys.first);
+          }
+          _imageBytesCache[url] = result;
+        }
+        return result;
+      } catch (e) {
+        Logger.log('getImageBytes (iOS) failed: $e');
+        return null;
+      }
+    }
     await _imageSemaphore.acquire();
     try {
       Uint8List? bytes;
@@ -382,7 +402,7 @@ class AnymeXRuntimeBridge {
   }
 
   static Future<bool> isLoadedFromStorage() async {
-    if (!Platform.isAndroid) return false;
+    if (!Platform.isAndroid && !Platform.isIOS) return false;
     final savedPath = getVal<String>('runtime_host_path');
     if (savedPath == null || savedPath.isEmpty) return false;
     final defaultPath = await RuntimePaths().bridgePath;

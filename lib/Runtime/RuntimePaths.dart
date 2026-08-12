@@ -14,8 +14,14 @@ class RuntimePaths {
         ? await getApplicationDocumentsDirectory()
         : await getApplicationSupportDirectory();
 
+    // On iOS, use the Application Support directory for runtime files
+    // (documents directory is visible in iTunes file sharing)
+    final effectiveBaseDir = Platform.isIOS
+        ? await getApplicationSupportDirectory()
+        : baseDir;
+
     final dir = Directory(
-        p.join(baseDir.path, p.basename(AnymeXExtensionBridge.projectName)));
+        p.join(effectiveBaseDir.path, p.basename(AnymeXExtensionBridge.projectName)));
 
     if (!await dir.exists()) {
       await dir.create(recursive: true);
@@ -52,6 +58,16 @@ class RuntimePaths {
     return p.join(dir.path, fileName);
   }
 
+  /// On iOS, returns the path where the embedded OpenJDK lives inside
+  /// the app bundle. Returns null if the embedded JDK is not found.
+  Future<String?> get embeddedJavaHome async {
+    if (!Platform.isIOS) return null;
+    // The embedded JDK is bundled by CI into Frameworks/
+    // The native side (JavaLauncher.findJavaHome) handles discovery.
+    // This Dart method exists for the downloader to skip JRE download on iOS.
+    return null; // iOS gets JRE from the app bundle, not downloaded
+  }
+
   Future<Directory> get jreDir async {
     final dir = await toolsDir;
     return Directory(p.join(dir.path, 'jre'));
@@ -64,7 +80,10 @@ class RuntimePaths {
   }
 
   Future<String?> get jvmLibPath async {
-    if (Platform.isAndroid) return null;
+    if (Platform.isAndroid || Platform.isIOS) return null;
+
+    // On iOS, libjvm is loaded by the native side via dlopen,
+    // not needed as a separate path in Dart.
 
     final jreRoot = await jreDir;
     if (!await jreRoot.exists()) return null;
@@ -94,7 +113,10 @@ class RuntimePaths {
   }
 
   Future<String?> get javaExecutablePath async {
-    if (Platform.isAndroid) return null;
+    if (Platform.isAndroid || Platform.isIOS) return null;
+
+    // On iOS, Java is managed by the native side (JLI_Launch),
+    // not invoked as a subprocess. Return null.
 
     final jreRoot = await jreDir;
     if (!await jreRoot.exists()) return null;

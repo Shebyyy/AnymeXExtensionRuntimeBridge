@@ -64,7 +64,8 @@ class ExtensionManager extends GetxController {
             AniyomiExtensions(),
             CloudStreamExtensions(),
             KotatsuExtensions(),
-          ] else if (Platform.isWindows ||
+          ] else if (Platform.isIOS ||
+              Platform.isWindows ||
               Platform.isLinux ||
               Platform.isMacOS) ...[
             DesktopAniyomiExtensions(),

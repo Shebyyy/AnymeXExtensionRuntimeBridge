@@ -21,7 +21,15 @@ class RuntimeDownloader {
   static const String dex2jarUrl =
       "https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip";
 
+  /// PojavLauncher OpenJDK 8 for iOS (arm64 only, Zero interpreter)
+  static const String iosJreUrl =
+      "https://github.com/PojavLauncherTeam/android-openjdk-build-multiarch/releases/download/jre8-99f3f8b/jre8-zero-aarch64-ios.tar.xz";
+
   static String get _jreUrl {
+    // iOS gets its JRE embedded in the app bundle by CI — skip download
+    if (Platform.isIOS) {
+      return '';
+    }
     if (Platform.isWindows) {
       return "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.12+7/OpenJDK17U-jre_x64_windows_hotspot_17.0.12_7.zip";
     } else if (Platform.isMacOS) {
@@ -78,8 +86,10 @@ class RuntimeDownloader {
 
       bool needsBridge =
           (localApkPath == null) && (force || !await bridgeFile.exists());
-      bool needsJre = isDesktop && !await jreDir.exists();
-      bool needsDex2jar = isDesktop && !File(dex2jarPath).existsSync();
+      // iOS gets JRE from the app bundle (embedded by CI)
+      bool needsJre = isDesktop && !Platform.isIOS && !await jreDir.exists();
+      // dex2jar not needed on iOS
+      bool needsDex2jar = isDesktop && !Platform.isIOS && !File(dex2jarPath).existsSync();
 
       int totalFiles =
           (needsBridge ? 1 : 0) + (needsJre ? 1 : 0) + (needsDex2jar ? 1 : 0);
@@ -158,7 +168,7 @@ class RuntimeDownloader {
       controller.updateStatus("Finalizing bridge...");
       bool isLoaded;
 
-      if (Platform.isAndroid) {
+      if (Platform.isAndroid || Platform.isIOS) {
         isLoaded = await AnymeXRuntimeBridge.loadAnymeXRuntimeHost(localApkPath ?? bridgeFile.path);
       } else {
         isLoaded = true;

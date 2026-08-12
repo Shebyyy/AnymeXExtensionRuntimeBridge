@@ -9,6 +9,7 @@ import '../Logger.dart';
 import 'RuntimePaths.dart';
 import 'RuntimeController.dart';
 import 'Bridge/BridgeDispatcher.dart';
+import '../AnymeXBridge.dart';
 
 abstract class DesktopExtensionBase extends Extension {
   @override
@@ -21,8 +22,13 @@ abstract class DesktopExtensionBase extends Extension {
     final controller = RuntimeController.it;
 
     if (controller.isReady.value) {
-      final bridgeJarPath = await paths.bridgePath;
-      await BridgeDispatcher().initialize(bridgeJarPath);
+      // On iOS, the bridge is loaded via native JNI — no subprocess needed.
+      // BridgeDispatcher uses a JVM subprocess (stdin/stdout JSON), which
+      // doesn't work on iOS. Skip it and rely on the native method channel.
+      if (!Platform.isIOS) {
+        final bridgeJarPath = await paths.bridgePath;
+        await BridgeDispatcher().initialize(bridgeJarPath);
+      }
     } else {
       Logger.log("AnymeX Bridge initialization deferred for $id: Runtime not ready.");
     }
