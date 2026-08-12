@@ -13,7 +13,7 @@ import Flutter
 // ---------------------------------------------------------------------------
 private var sharedPlugin: AnymexExtensionRuntimeBridgePlugin?
 private var jvmReady = false
-private let jvmMutex = pthread_mutex_t()
+private var jvmMutex = pthread_mutex_t()
 
 public class AnymexExtensionRuntimeBridgePlugin: NSObject, FlutterPlugin {
 
@@ -353,7 +353,7 @@ public class AnymexExtensionRuntimeBridgePlugin: NSObject, FlutterPlugin {
                 jvalue(l: jUrl),
             ])
 
-            if let bytes = imageBytes, !jni.exceptionCheck() {
+            if let bytes = imageBytes, jni.exceptionCheck() == 0 {
                 if let data = convertJByteArrayToFlutterData(bytes) {
                     result(FlutterStandardTypedData(bytes: data))
                 } else {
@@ -438,7 +438,7 @@ public class AnymexExtensionRuntimeBridgePlugin: NSObject, FlutterPlugin {
             jvalue(l: argsArray),
         ])
 
-        if jni.exceptionCheck() {
+        if jni.exceptionCheck() != 0 {
             let errMsg = getJavaExceptionMessage()
             jni.exceptionClear()
             result(FlutterError(code: "JAVA_EXCEPTION", message: errMsg ?? "Unknown Java exception", details: nil))
@@ -676,7 +676,7 @@ public class AnymexExtensionRuntimeBridgePlugin: NSObject, FlutterPlugin {
         }
 
         // Check if it's a byte array
-        if jni.isByteArray(obj: obj) {
+        if jni.isByteArray(obj) {
             if let data = convertJByteArrayToFlutterData(obj) {
                 return FlutterStandardTypedData(bytes: data)
             }

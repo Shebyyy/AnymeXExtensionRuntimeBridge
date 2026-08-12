@@ -1236,7 +1236,7 @@ public class JniHelper: NSObject {
         )
         let arrayClass = fn(env, obj)
         if let arrayClass = arrayClass {
-            let name = jni.getClassName(env: env, cls: arrayClass)
+            let name = jniClassName(env: env, cls: arrayClass)
             deleteLocalRef(obj: arrayClass)
             return name == "[B"
         }
@@ -1318,7 +1318,7 @@ public class JniHelper: NSObject {
     }
 
     /// Set an element of an Object array.
-    public func setObjectArrayElement(array: jobject, index: jint, value: jobject?) {
+    public func setObjectArrayElement(array: jobject, index: jint, value: jobject) {
         guard let env = getEnv() else { return }
         let fn = getJniFunction(
             env: env, index: 183,
