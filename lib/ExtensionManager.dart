@@ -47,6 +47,7 @@ class ExtensionManager extends GetxController {
     await _registerAndInitializeManagers([
       SoraExtensions(),
       MangayomiExtensions(),
+      NuvioExtensions(),
     ]);
 
     await onRuntimeBridgeInitialization();
@@ -340,6 +341,8 @@ extension SourceExecution on Source {
           'https://static.everythingmoe.com/icons/cloudstream.png',
         KotatsuSource _ =>
           'https://raw.githubusercontent.com/KotatsuApp/Kotatsu/devel/metadata/en-US/icon.png',
+        NuvioSource _ =>
+          'https://nuvio-plugin-library.vercel.app/NuvioLogo.png',
         _ => 'mangayomi',
       };
 
@@ -365,6 +368,9 @@ Extension getSourceManager(Source source) {
   }
   if (source is KotatsuSource) {
     return em.findById('kotatsu') ?? em.findById('kotatsu-desktop')!;
+  }
+  if (source is NuvioSource) {
+    return em.findById('nuvio')!;
   }
 
   return em.findById('mangayomi')!;
