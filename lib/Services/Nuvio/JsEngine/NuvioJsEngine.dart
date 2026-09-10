@@ -83,28 +83,59 @@ class NuvioJsEngine {
 
       await fetch.inject();
 
-      // Transparent fetch supporting both fetch(url, options) and fetchv2
+      // Transparent fetch supporting both fetch(url, options) and fetchv2 with Headers polyfill
       _runtime.evaluate(r'''
+        function createHeaders(raw) {
+          const map = new Map();
+          if (raw && typeof raw === 'object') {
+            for (const [k, v] of Object.entries(raw)) {
+              if (v != null) {
+                map.set(String(k).toLowerCase(), String(v));
+              }
+            }
+          }
+          const obj = {
+            get: function(k) {
+              const key = String(k).toLowerCase();
+              return map.has(key) ? map.get(key) : null;
+            },
+            has: function(k) {
+              return map.has(String(k).toLowerCase());
+            },
+            forEach: function(cb) {
+              map.forEach(cb);
+            }
+          };
+          if (raw && typeof raw === 'object') {
+            Object.assign(obj, raw);
+          }
+          return obj;
+        }
+
         async function nuvioFetch(url, options = {}) {
           let headers = {};
           let method = "GET";
           let body = null;
+          let redirect = "follow";
           if (options && typeof options === 'object') {
             headers = options.headers || {};
             method = options.method || "GET";
             body = options.body || null;
+            redirect = options.redirect || "follow";
           }
           const payload = JSON.stringify({
             type: "fetchv2",
             url: String(url),
             headers,
             method,
-            body
+            body,
+            redirect
           });
           const res = await sendMessage("bridge", payload);
+          const headerObj = createHeaders(res.headers);
           return {
             status: res.status,
-            headers: res.headers,
+            headers: headerObj,
             ok: res.status >= 200 && res.status < 300,
             json: () => Promise.resolve(JSON.parse(res.body)),
             text: () => Promise.resolve(res.body)
@@ -258,7 +289,7 @@ class NuvioJsEngine {
       })()
     ''';
 
-    final result = await _runtime.handlePromise(await _runtime.evaluate(js));
+    final result = await _runtime.handlePromise(_runtime.evaluate(js));
     final raw = result.rawResult;
 
     if (raw is List) {

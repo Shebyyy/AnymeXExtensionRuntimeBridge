@@ -18,7 +18,7 @@ class JsCheerio {
       final html = args[0];
       final doc = parse(html);
       _elementKey++;
-      _elements[_elementKey] = doc.body;
+      _elements[_elementKey] = doc.documentElement ?? doc.body;
       return _elementKey;
     });
 
@@ -34,6 +34,18 @@ class JsCheerio {
       dynamic result;
 
       switch (method) {
+        case 'is':
+          final selector = (methodArgs.isNotEmpty ? methodArgs[0]?.toString() : '') ?? '';
+          if (selector.isEmpty) {
+            result = false;
+          } else if (selector.startsWith('.')) {
+            result = element.classes.contains(selector.substring(1));
+          } else if (selector.startsWith('#')) {
+            result = element.id == selector.substring(1);
+          } else {
+            result = element.localName?.toLowerCase() == selector.toLowerCase();
+          }
+          break;
         case 'text':
           result = element.text;
           break;
@@ -172,6 +184,7 @@ class Element {
   val() { return this._call("val"); }
   attr(name) { return this._call("attr", [name]); }
   hasClass(cls) { return this._call("hasClass", [cls]); }
+  is(sel) { return !!this._call("is", [sel]); }
 
   addClass(cls) { this._call("addClass", [cls]); return this; }
   removeClass(cls) { this._call("removeClass", [cls]); return this; }
@@ -240,6 +253,10 @@ class ElementCollection {
 
   hasClass(cls) {
     return this.first()?.hasClass(cls);
+  }
+
+  is(sel) {
+    return this.first()?.is(sel) ?? false;
   }
 
   each(fn) {
@@ -346,10 +363,15 @@ class ElementCollection {
   }
 
   get(index) {
+    if (index === undefined) return this.elements;
     return this.elements[index] || new Stub();
   }
 
   length() {
+    return this.elements.length;
+  }
+
+  get length() {
     return this.elements.length;
   }
 
@@ -381,13 +403,25 @@ class Stub {
   hasClass(cls) {
     return false;
   }
+  is(sel) {
+    return false;
+  }
 }
 
 function load(html) {
   const rootKey = sendMessage("load", JSON.stringify([html]));
   const root = new Element(rootKey);
 
-  const \$ = function(input) {
+  const \$ = function(input, context) {
+    if (context) {
+      let ctxEl = null;
+      if (context instanceof Element) ctxEl = context;
+      else if (context instanceof ElementCollection) ctxEl = context.first();
+      else if (context && context._key) ctxEl = new Element(context._key);
+      if (ctxEl && typeof input === "string") {
+        return ctxEl.find(input);
+      }
+    }
     if (input instanceof ElementCollection) {
       return input;
     } else if (input instanceof Element) {

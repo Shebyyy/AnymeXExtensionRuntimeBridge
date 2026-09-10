@@ -11,13 +11,12 @@ import '../../Models/Source.dart';
 import '../../Models/SourceParams.dart';
 import '../../Models/SourcePreference.dart';
 import '../../Models/Video.dart';
-import '../Mangayomi/http/m_client.dart';
 import 'JsEngine/NuvioJsEngine.dart';
 import 'Models/NuvioSource.dart';
 
 class NuvioSourceMethods implements SourceMethods {
   final NuvioSource _source;
-  final http.Client _client = MClient.init();
+  final http.Client _client = http.Client();
 
   static const String _defaultTmdbKey = '439c478a771f35c05022f9feabcca01c';
 
@@ -260,10 +259,27 @@ class NuvioSourceMethods implements SourceMethods {
       {SourceParams? parameters}) async {
     final rawUrl = episode.url ?? '';
     final parts = rawUrl.split(';');
-    final tmdbId = parts.isNotEmpty ? parts[0] : '';
-    final mediaType = parts.length > 1 ? parts[1].toLowerCase() : 'movie';
-    final season = parts.length > 2 ? int.tryParse(parts[2]) ?? 1 : 1;
-    final epNum = parts.length > 3 ? int.tryParse(parts[3]) ?? 1 : 1;
+    String tmdbId = parts.isNotEmpty ? parts[0] : '';
+    String mediaType = parts.length > 1 ? parts[1].toLowerCase() : 'movie';
+    int season = parts.length > 2 ? int.tryParse(parts[2]) ?? 1 : 1;
+    int epNum = parts.length > 3 ? int.tryParse(parts[3]) ?? 1 : 1;
+
+    if (episode.sortMap != null && episode.sortMap!['season'] != null) {
+      final s = int.tryParse(episode.sortMap!['season']!);
+      if (s != null && s > 0) season = s;
+    }
+    final epParsed = double.tryParse(episode.episodeNumber)?.toInt();
+    if (epParsed != null && epParsed > 0) {
+      epNum = epParsed;
+    }
+
+    if (int.tryParse(tmdbId) == null && rawUrl.contains('themoviedb.org')) {
+      final match = RegExp(r'themoviedb\.org/(movie|tv)/(\d+)').firstMatch(rawUrl);
+      if (match != null) {
+        mediaType = match.group(1)!;
+        tmdbId = match.group(2)!;
+      }
+    }
 
     if (tmdbId.isEmpty) return const [];
 

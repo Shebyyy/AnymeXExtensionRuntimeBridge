@@ -9,7 +9,13 @@ class FetchV2 {
   final JavascriptRuntime runtime;
   FetchV2(this.runtime);
 
-  final http.Client _client = MClient.init();
+  http.Client get _client {
+    try {
+      return MClient.init();
+    } catch (_) {
+      return http.Client();
+    }
+  }
 
   static const _defaultHeaders = {
     'User-Agent':
@@ -50,6 +56,8 @@ const fetch = fetchv2;
     final url = data['url'] as String;
     var method = (data['method'] as String? ?? 'GET').toUpperCase();
     var body = data['body'];
+    final redirect = data['redirect']?.toString();
+    final followRedirects = redirect != 'manual';
 
     final headers = Map<String, String>.from(_defaultHeaders);
 
@@ -82,22 +90,16 @@ const fetch = fetchv2;
     try {
       final uri = Uri.parse(url);
 
-      http.Response response;
+      final req = http.Request(method, uri)
+        ..headers.addAll(normalizedHeaders)
+        ..followRedirects = followRedirects;
 
-      if (method == 'GET') {
-        response = await _client.get(uri, headers: normalizedHeaders);
-      } else if (method == 'HEAD') {
-        response = await _client.head(uri, headers: normalizedHeaders);
-      } else {
-        final req = http.Request(method, uri)..headers.addAll(normalizedHeaders);
-
-        if (body != null) {
-          req.body = body is String ? body : jsonEncode(body);
-        }
-
-        final streamed = await _client.send(req);
-        response = await http.Response.fromStream(streamed);
+      if (body != null) {
+        req.body = body is String ? body : jsonEncode(body);
       }
+
+      final streamed = await _client.send(req);
+      final response = await http.Response.fromStream(streamed);
 
       final headerMap = <String, dynamic>{};
       response.headers.forEach((k, v) {

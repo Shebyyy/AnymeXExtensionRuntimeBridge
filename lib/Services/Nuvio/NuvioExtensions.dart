@@ -9,12 +9,11 @@ import '../../Extensions/SourceMethods.dart';
 import '../../Logger.dart';
 import '../../Models/Source.dart';
 import '../../Settings/KvStore.dart';
-import '../Mangayomi/http/m_client.dart';
 import 'Models/NuvioSource.dart';
 import 'NuvioSourceMethods.dart';
 
 class NuvioExtensions extends Extension {
-  static final _client = MClient.init();
+  static final _client = http.Client();
 
   @override
   String get id => 'nuvio';
