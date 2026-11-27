@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Build message
         run: |
-          TITLE="🚀 New Bridge Release: ${RELEASE_NAME:-$TAG}"
+          TITLE="New Bridge Release: ${RELEASE_NAME:-$TAG}"
           MESSAGE="A new AnymeX Extension Runtime Bridge update is out."
           echo "TITLE=$TITLE" >> "$GITHUB_ENV"
           echo "MESSAGE=$MESSAGE" >> "$GITHUB_ENV"
